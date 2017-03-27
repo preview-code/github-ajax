@@ -27,14 +27,12 @@
   ],
   "globals": {
     "Polymer": false,
+    "sinon": false,
     "assert": false,
     "it": false,
-    "describe": false,
-    "MockInteractions": false,
     "fixture": false,
-    "flush": false,
+    "describe": false,
     "WCT": false,
-    "hljs": false,
     "beforeEach": false
   }
 }

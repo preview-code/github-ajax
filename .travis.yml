@@ -10,8 +10,9 @@ addons:
     packages:
     - google-chrome-stable
 before_script:
-- npm install
+- npm install -g bower
 - bower install
+script: xvfb-run npm test
 cache:
   directories:
     - node_modules

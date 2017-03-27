@@ -9,7 +9,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
   <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
   <title>github-ajax tests</title>
 
-  <script src="../../webcomponents-lite.min.js"></script>
+  <script src="../../webcomponentsjs/webcomponents-lite.js"></script>
   <script src="../../web-component-tester/browser.js"></script>
 
   <link rel="import" href="../github-ajax.html">
@@ -26,7 +26,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
   <script>
 
-    suite('<github-ajax>', function() {
+    describe('<github-ajax>', function() {
       var ajax, one, two, server;
       var token = 'token';
       var responseHeaders = {
@@ -46,7 +46,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         element.addEventListener(name, inner);
       }
 
-      setup(function() {
+      beforeEach(function() {
         ajax = fixture('basic');
         one = ajax[0];
         two = ajax[1];
@@ -64,14 +64,14 @@ This code may only be used under the BSD style license found in LICENSE.txt
         one.storeToken(token);
       });
 
-      test('token shared between instances', function() {
+      it('token shared between instances', function() {
         assert.equal(one.params.access_token, token);
         assert.equal(two.params.access_token, token);
         var el = document.createElement('github-ajax');
         assert.equal(el.params.access_token, token);
       });
 
-      test('receives response', function(done) {
+      it('receives response', function(done) {
         addEventListener(one, 'response', function() {
           assert.deepEqual(one.lastResponse, {
             success: true
@@ -81,10 +81,10 @@ This code may only be used under the BSD style license found in LICENSE.txt
         one.generateRequest();
       });
 
-      suite('with ETag', function() {
+      describe('with ETag', function() {
         var etag;
 
-        setup(function() {
+        beforeEach(function() {
           server.respondWith(
             'GET',
             /github.json.*/, function(xhr) {
@@ -94,12 +94,12 @@ This code may only be used under the BSD style license found in LICENSE.txt
           );
         });
 
-        test('resends correct ETag on new request', function() {
+        it('resends correct ETag on new request', function() {
           one.generateRequest();
           assert.equal(etag, responseHeaders.ETag);
         });
 
-        test('corrects 304 to response from cache', function(done) {
+        it('corrects 304 to response from cache', function(done) {
           addEventListener(one, 'response', function(e) {
             var request = e.detail;
             if (request.status !== 304) {
@@ -113,7 +113,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
           one.generateRequest();
         });
 
-        test('new element fetches from headercache', function(done) {
+        it('new element fetches from headercache', function(done) {
           var el = document.createElement('github-ajax');
           el.refurl = 'github.json';
           addEventListener(el, 'response', function() {
