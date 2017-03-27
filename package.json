@@ -1,0 +1,19 @@
+{
+  "name": "github-ajax",
+  "version": "0.0.1",
+  "private": true,
+  "main": "index.html",
+  "repository": "https://github.com/preview-code/github-ajax.git",
+  "author": "Preview-Code",
+  "license": "BSD-3-Clause",
+  "devDependencies": {
+    "eslint-plugin-html": "^1.5.5",
+    "gulp": "gulpjs/gulp#4.0",
+    "gulp-eslint": "^3.0.1",
+    "web-component-tester": "^5.0.1"
+  },
+  "scripts": {
+    "lint": "gulp lint",
+    "test": "wct"
+  }
+}

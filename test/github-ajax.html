@@ -1,0 +1,130 @@
+<!--
+@license
+Copyright (c) 2017 Preview-Code. All rights reserved.
+This code may only be used under the BSD style license found in LICENSE.txt
+-->
+<!doctype html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+  <title>github-ajax tests</title>
+
+  <script src="../../webcomponents-lite.min.js"></script>
+  <script src="../../web-component-tester/browser.js"></script>
+
+  <link rel="import" href="../github-ajax.html">
+
+</head>
+<body>
+
+  <test-fixture id="basic">
+    <template>
+      <github-ajax id="one" refurl="github.json"></github-ajax>
+      <github-ajax id="two"></github-ajax>
+    </template>
+  </test-fixture>
+
+  <script>
+
+    suite('<github-ajax>', function() {
+      var ajax, one, two, server;
+      var token = 'token';
+      var responseHeaders = {
+        'Content-Type': 'application/json',
+        'ETag': 'susdiwp36ljsdl'
+      };
+      var response = {
+        one: '{"success":true}',
+        two: '{"anotherSuccess: true"}'
+      };
+
+      function addEventListener(element, name, func) {
+        var inner = function(e) {
+          func(e);
+          element.removeEventListener(name, inner);
+        };
+        element.addEventListener(name, inner);
+      }
+
+      setup(function() {
+        ajax = fixture('basic');
+        one = ajax[0];
+        two = ajax[1];
+
+        server = sinon.fakeServer.create();
+        server.respondWith(
+          'GET',
+          /github.json.*/, [
+            200,
+            responseHeaders,
+            response.one
+          ]
+        );
+        server.respondImmediately = true;
+        one.storeToken(token);
+      });
+
+      test('token shared between instances', function() {
+        assert.equal(one.params.access_token, token);
+        assert.equal(two.params.access_token, token);
+        var el = document.createElement('github-ajax');
+        assert.equal(el.params.access_token, token);
+      });
+
+      test('receives response', function(done) {
+        addEventListener(one, 'response', function() {
+          assert.deepEqual(one.lastResponse, {
+            success: true
+          });
+          done();
+        });
+        one.generateRequest();
+      });
+
+      suite('with ETag', function() {
+        var etag;
+
+        setup(function() {
+          server.respondWith(
+            'GET',
+            /github.json.*/, function(xhr) {
+              etag = xhr.requestHeaders['if-none-match'];
+              xhr.respond(304, responseHeaders, response.two);
+            }
+          );
+        });
+
+        test('resends correct ETag on new request', function() {
+          one.generateRequest();
+          assert.equal(etag, responseHeaders.ETag);
+        });
+
+        test('corrects 304 to response from cache', function(done) {
+          addEventListener(one, 'response', function(e) {
+            var request = e.detail;
+            if (request.status !== 304) {
+              return;
+            }
+            assert.deepEqual(request.response, {
+              success: true
+            });
+            done();
+          });
+          one.generateRequest();
+        });
+
+        test('new element fetches from headercache', function(done) {
+          var el = document.createElement('github-ajax');
+          el.refurl = 'github.json';
+          addEventListener(el, 'response', function() {
+            assert.equal(etag, responseHeaders.ETag);
+            done();
+          });
+          el.generateRequest();
+        });
+      });
+    });
+  </script>
+
+</body>
+</html>

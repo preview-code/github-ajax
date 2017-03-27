@@ -1,0 +1,40 @@
+{
+  "extends": "eslint:recommended",
+  "rules": {
+    "no-console": 0,
+    "eqeqeq": 1,
+    "no-else-return": 1,
+    "array-bracket-spacing": 1,
+    "brace-style": [1, "1tbs", {
+      "allowSingleLine": true
+    }],
+    "comma-spacing": 1,
+    "eol-last": 1,
+    "key-spacing": 1,
+    "object-curly-spacing": 1,
+    "space-before-blocks": 1,
+    "keyword-spacing": 1,
+    "quotes": [2, "single", {
+      "avoidEscape": true
+    }],
+    "indent": ["warn", 2]
+  },
+  "env": {
+    "browser": true
+  },
+  "plugins": [
+    "html"
+  ],
+  "globals": {
+    "Polymer": false,
+    "assert": false,
+    "it": false,
+    "describe": false,
+    "MockInteractions": false,
+    "fixture": false,
+    "flush": false,
+    "WCT": false,
+    "hljs": false,
+    "beforeEach": false
+  }
+}
