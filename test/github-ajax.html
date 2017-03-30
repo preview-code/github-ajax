@@ -19,24 +19,16 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
   <test-fixture id="basic">
     <template>
-      <github-ajax id="one" refurl="github.json"></github-ajax>
-      <github-ajax id="two"></github-ajax>
+      <github-ajax id="ajax" url="github"></github-ajax>
+      <github-ajax id="anotherAjax" url="github"></github-ajax>
     </template>
   </test-fixture>
 
   <script>
 
-    describe('<github-ajax>', function() {
-      var ajax, one, two, server;
-      var token = 'token';
-      var responseHeaders = {
-        'Content-Type': 'application/json',
-        'ETag': 'susdiwp36ljsdl'
-      };
-      var response = {
-        one: '{"success":true}',
-        two: '{"anotherSuccess: true"}'
-      };
+    describe('<github-ajax>', () => {
+      var ajax, anotherAjax, server;
+      var token = 'VERY_SECRET_TOKEN';
 
       function addEventListener(element, name, func) {
         var inner = function(e) {
@@ -46,82 +38,160 @@ This code may only be used under the BSD style license found in LICENSE.txt
         element.addEventListener(name, inner);
       }
 
-      beforeEach(function() {
-        ajax = fixture('basic');
-        one = ajax[0];
-        two = ajax[1];
+      function getRequestParam(request, variable) {
+        var urlSplit = request.url.split('?');
+        if (urlSplit.length === 2) {
+          var vars = urlSplit[1].split('&');
+          for (var i = 0; i < vars.length; i++) {
+            var pair = vars[i].split('=');
+            if (decodeURIComponent(pair[0]) == variable) {
+              return decodeURIComponent(pair[1]);
+            }
+          }
+        }
+      }
 
+      beforeEach(() => {
+        ajax = fixture('basic')[0];
+        anotherAjax = fixture('basic')[1];
         server = sinon.fakeServer.create();
-        server.respondWith(
-          'GET',
-          /github.json.*/, [
-            200,
-            responseHeaders,
-            response.one
-          ]
-        );
-        server.respondImmediately = true;
-        one.storeToken(token);
+
+        
       });
 
-      it('token shared between instances', function() {
-        assert.equal(one.params.access_token, token);
-        assert.equal(two.params.access_token, token);
-        var el = document.createElement('github-ajax');
-        assert.equal(el.params.access_token, token);
-      });
-
-      it('receives response', function(done) {
-        addEventListener(one, 'response', function() {
-          assert.deepEqual(one.lastResponse, {
-            success: true
-          });
-          done();
-        });
-        one.generateRequest();
-      });
-
-      describe('with ETag', function() {
-        var etag;
-
-        beforeEach(function() {
-          server.respondWith(
-            'GET',
-            /github.json.*/, function(xhr) {
-              etag = xhr.requestHeaders['if-none-match'];
-              xhr.respond(304, responseHeaders, response.two);
-            }
-          );
+      describe('GitHub specific properties', () => {
+        it('does not add `access_token` to request headers if `accessToken` is not present', () => {
+          ajax.generateRequest();
+          expect(getRequestParam(server.requests[0], 'access_token')).to.be.undefined;
         });
 
-        it('resends correct ETag on new request', function() {
-          one.generateRequest();
-          assert.equal(etag, responseHeaders.ETag);
+        it('adds `access_token` to request headers if `accessToken` is present', () => {
+          ajax.accessToken = token;
+          ajax.generateRequest();
+          var accessToken = getRequestParam(server.requests[0], 'access_token');
+          expect(accessToken).to.equal(token);
         });
 
-        it('corrects 304 to response from cache', function(done) {
-          addEventListener(one, 'response', function(e) {
-            var request = e.detail;
-            if (request.status !== 304) {
-              return;
-            }
-            assert.deepEqual(request.response, {
-              success: true
-            });
-            done();
-          });
-          one.generateRequest();
+        it('does not add `per_page` to request headers if `perPage` is not present', () => {
+          ajax.generateRequest();
+          expect(getRequestParam(server.requests[0], 'per_page')).to.be.undefined;
         });
 
-        it('new element fetches from headercache', function(done) {
+        it('adds `per_page` to request headers if `perPage` is present', () => {
+          ajax.perPage = 42;
+          ajax.generateRequest();
+          var perPage = getRequestParam(server.requests[0], 'per_page');
+          expect(perPage).to.equal('42');
+        });
+
+        it('does not add `page` to request headers if `page` property is not present', () => {
+          ajax.generateRequest();
+          expect(getRequestParam(server.requests[0], 'page')).to.be.undefined;
+        });
+
+        it('adds `page` to request headers if `page` property is present', () => {
+          ajax.page = 42;
+          ajax.generateRequest();
+          var page = getRequestParam(server.requests[0], 'page');
+          expect(page).to.equal('42');
+        });
+
+        it('access token is shared between instances', () => {
+          ajax.accessToken = token;
+          expect(ajax.params.access_token).to.equal(token);
+          
+          expect(anotherAjax.accessToken).to.equal(token);
+          expect(anotherAjax.params.access_token).to.equal(token);
+
           var el = document.createElement('github-ajax');
-          el.refurl = 'github.json';
-          addEventListener(el, 'response', function() {
-            assert.equal(etag, responseHeaders.ETag);
-            done();
-          });
-          el.generateRequest();
+          document.body.appendChild(el);
+          expect(el.accessToken).to.equal(token);
+          expect(el.params.access_token).to.equal(token);
         });
+      });
+      
+
+
+      describe('Caching', () => {
+        var etag = 'SOME_ETAG';
+        var newETag = 'SOME_ETAG_v2'
+        var request, responseHeaders, responses;
+
+        beforeEach(() => {
+
+          responseHeaders = {
+            notModified: {
+              'ETag': etag
+            },
+            jsonWithEtag: {
+              'Content-Type': 'application/json',
+              'ETag': etag
+            },
+            jsonWithNewEtag: {
+              'Content-Type': 'application/json',
+              'ETag': newETag
+            }
+          }
+
+          responses = [
+            '{"success":true}',
+            '{"anotherSuccess: true"}'
+          ];
+
+          caches.delete('github-cache');
+        });
+
+        it('sends no ETag when cache is empty', () => {
+          ajax.generateRequest();
+          expect(server.requests[0].requestHeaders['if-none-match']).to.be.undefined;
+        });
+
+        it('opens a cache with the correct name', async () => {
+          ajax.generateRequest();
+          server.requests[0].respond(200, responseHeaders.jsonWithEtag, responses[0]);
+          expect(await caches.has(ajax._cacheName)).to.be.true;
+        });
+
+        it('caches responses', async () => {
+          ajax.generateRequest();
+          server.requests[0].respond(200, responseHeaders.jsonWithEtag, responses[0]);
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(server.requests[0]);
+          expect(cachedResponse.body).to.equal(responses[0]);
+          expect(cachedResponse.etag).to.equal(etag);
+        });
+
+        // it('resends correct ETag on new request', () => {
+        //   ajax.generateRequest();
+        //   ajax.generateRequest();
+
+        //   server.requests[0].respond(200, responseHeaders.jsonWithEtag, responses[0]);
+        //   expect(server.requests[0].requestHeaders['if-none-match']).to.equal(etag);
+        // });
+
+      //   it('corrects 304 to response from cache', function(done) {
+      //     addEventListener(one, 'response', function(e) {
+      //       var request = e.detail;
+      //       if (request.status !== 304) {
+      //         return;
+      //       }
+      //       assert.deepEqual(request.response, {
+      //         success: true
+      //       });
+      //       done();
+      //     });
+      //     one.generateRequest();
+      //   });
+
+      //   it('new element fetches from headercache', function(done) {
+      //     var el = document.createElement('github-ajax');
+      //     el.refurl = 'github.json';
+      //     addEventListener(el, 'response', () => {
+      //       assert.equal(etag, responseHeaders.ETag);
+      //       done();
+      //     });
+      //     el.generateRequest();
+      //   });
       });
     });
   </script>

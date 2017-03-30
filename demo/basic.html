@@ -1,0 +1,71 @@
+<link rel="import" href="../github-ajax.html">
+<link rel="import" href="../../paper-button/paper-button.html">
+
+<dom-module id="basic-demo">
+  <template>
+    <style>
+      :host {
+        display: block;
+      }
+    </style>
+
+    
+    <github-ajax
+      auto
+      id="githubSearch"
+      url="https://api.github.com/search/code"
+      last-response="{{last}}"
+      on-error="_error"
+      on-request="_req"
+      on-response="_res"
+      params="[[queryParams]]"
+    ></github-ajax>
+<!--
+    <github-ajax
+      id="githubSearch"
+      refurl="https://api.github.com/user"
+      last-response="{{githubUser}}"
+      on-error="_error"
+      on-request="_req"
+      on-response="_res"
+      ></github-authenticated-ajax>-->
+
+    <template is="dom-repeat" items="[[last.items]]">
+      <div><a href="[[item.html_url]]">[[item.path]]</a></div>
+    </template>
+
+    
+    <paper-button raised on-tap="doRequest">Request</paper-button>
+    
+  </template>
+  <script>
+    Polymer({
+      is: 'basic-demo',
+
+      properties: {
+        last: Object,
+
+        queryParams: {
+          type: Object,
+          value: {q: 'addClass+user:mozilla'}
+        }
+      },
+
+      doRequest: function() {
+        this.$.githubSearch.generateRequest();
+      },
+
+      _error: function(e) {
+        console.log('err', e);
+      },
+
+      _req: function(e) {
+        console.log('req', e);
+      },
+
+      _res: function(e) {
+        console.log('resp', e);
+      }
+    });
+  </script>
+</dom-module>

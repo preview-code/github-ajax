@@ -5,123 +5,341 @@ This code may only be used under the BSD style license found in LICENSE.txt
 -->
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../iron-ajax/iron-ajax.html">
-<link rel="import" href="iron-ajax-properties.html">
 
 <!--
 Wrapper around iron-ajax to enable caching of ETags and proper handling
 of params with oAuth tokens.
+
+@demo demo/index.html
 -->
 <dom-module id="github-ajax">
   <template>
-    <iron-ajax
+    <!--<iron-ajax
       id="ajax"
-      url="[[refurl]]"
+      url="[[url]]"
       params="[[params]]"
       method="[[method]]"
       headers="[[headers]]"
+      content-type="[[contentType]]"
       body="[[body]]"
       sync="[[sync]]"
       handle-as="[[handleAs]]"
       with-credentials="[[withCredentials]]"
       timeout="[[timeout]]"
+      auto="[[auto]]"
       verbose="[[verbose]]"
-      last-request="{{last-request}}"
-      loading="{{iron-loading}}"
-      last-error="{{last-error}}"
-      activeRequests="{{active-requests}}"
-      debounce-duration="[[debounceDuration]]"
+      loading="{{_loading}}"
+      last-error="{{_lastError}}"
+      last-request="{{_lastRequest}}"
+      last-response="{{_lastResponse}}"
+      active-requests="{{_activeRequests}}"
+      debounce-duration="{{debounceDuration}}"
       json-prefix="[[jsonPrefix]]"
-      bubbles="[[bubbles]]"
       on-request="_onRequest"
       on-response="_onResponse"
-      on-error="_onError"></iron-ajax>
+      on-error="_onError"></iron-ajax>-->
   </template>
   <script>
-  /*global IronAjaxProperties*/
-  var shared = {
-    responseCache: {},
-    headerCache: {}
-  };
-
   (function() {
+    var sharedToken;
+    var instances = [];
+
     Polymer({
       is: 'github-ajax',
-      behaviors: [IronAjaxProperties],
       properties: {
-        /**
-         * Parameters decorated with the oAuth token and the perPage property
-         * @type {Object}
-         */
-        params: {
-          type: Object,
-          computed: '_generateParams(shared, perPage, page)',
-          observer: '_maybeFire'
-        },
         /**
          * How many results must be retrieved from GitHub, default 10.
          * @type {Number}
          */
         perPage: {
           type: Number,
-          value: 10
+          observer: '_onPerPageChange'
         },
+
         /**
          * The nth page from GitHub, used to travers through pagination.
          * @type {Number}
          */
         page: {
           type: Number,
-          value: 1
+          observer: '_onPageChange'
+        },
+
+        /**
+         * OAuth access token for authenticated requests, e.g.: fetching the current user.
+         * @type{String}
+         */
+        accessToken: {
+          type: String,
+          observer: '_onTokenChange'
+        },
+
+        _loading: {
+          type: Boolean,
+          observer: '_onLoadingChange'
+        },
+
+        _lastRequest: {
+          type: Boolean,
+          observer: '_onLastRequestChange'
+        },
+
+        _lastResponse: {
+          type: Boolean,
+          observer: '_onLastResponseChange'
+        },
+
+        _lastError: {
+          type: Boolean,
+          observer: '_onLastErrorChange'
+        },
+
+        _activeRequests: {
+          type: Array,
+          observer: '_onActiveRequestsChange'
+        },
+
+
+        /**
+         * RE-EXPORTED PROPERTIES FROM IRON-AJAX
+         */
+        url: String,
+        params: {
+          type: Object,
+          value: function() { return {} }
+        },
+        method: {
+          type: String,
+          value: 'GET'
+        },
+        headers: {
+          type: Object,
+          value: function() { return {} }
+        },
+        contentType: {
+          type: String,
+          value: null
+        },
+        body: {
+          type: Object,
+          value: null
+        },
+        sync: {
+          type: Boolean,
+          value: false
+        },
+        handleAs: {
+          type: String,
+          value: 'json'
+        },
+        withCredentials: {
+          type: Boolean,
+          value: false
+        },
+        timeout: {
+          type: Number,
+          value: 0
+        },
+        auto: {
+          type: Boolean,
+          value: false
+        },
+        verbose: {
+          type: Boolean,
+          value: false
+        },
+        lastRequest: {
+          type: Object,
+          notify: true,
+          readOnly: true
+        },
+        loading: {
+          type: Boolean,
+          notify: true,
+          readOnly: true,
+        },
+        lastResponse: {
+          type: Object,
+          notify: true,
+          readOnly: true
+        },
+        lastError: {
+          type: Object,
+          notify: true,
+          readOnly: true
+        },
+        activeRequests: {
+          type: Array,
+          notify: true,
+          readOnly: true,
+        },
+        debounceDuration: {
+          type: Number,
+          value: 0,
+          notify: true
+        },
+        jsonPrefix: {
+          type: String,
+          value: ''
+        },
+        bubbles: {
+          type: Boolean,
+          value: false
+        },
+
+        _cacheName: {
+          type: String,
+          value: 'github-cache'
         }
       },
+      
       observers: [
-        '_updateIfNoneMatch(refurl, page)'
+        '_requestOptionsChanged(page, perPage, accessToken)'
+        // '_updateIfNoneMatch(refurl, page)'
       ],
-      _generateParams: function(shared, perPage, page) {
-        var accessToken = shared.accessToken;
-        if (!accessToken) {
-          return undefined;
-        }
-        return {
-          access_token: accessToken,
-          per_page: perPage,
-          page: page
-        };
+
+      attached: function() {
+        if (sharedToken) this.accessToken = sharedToken;
+        instances.push(this);
       },
-      _updateIfNoneMatch: function(refurl, page) {
-        var etag = shared.headerCache[refurl + 'page' + page];
-        if (etag) {
-          this._setHeader('If-None-Match', etag);
-        }
+
+      detached: function() {
+        var index = instances.indexOf(this);
+        instances.splice(index, 1);
       },
-      _onResponse: function(e) {
-        shared.headerCache[this.refurl + 'page' + this.page] = e.detail.xhr.getResponseHeader('ETag');
-        shared.responseCache[this.refurl + 'page' + this.page] = e.detail.response;
-        
-        this._setLastResponse(shared.responseCache[this.refurl + 'page' + this.page]);
-        e.stopPropagation();
-        this.fire('response', Object.create(e.detail), {
-          bubbles: this.bubbles
-        });
+
+      _requestOptionsChanged: function() {
+        this.$.ajax._requestOptionsChanged();
       },
-      _onError: function(e) {
-        shared.headerCache[this.refurl] = e.detail.request.xhr.getResponseHeader('ETag');
-        // Cache responses to save the rate limit of the GitHub api
-        if (e.detail.request.status === 304) {
-          this._retrievePreviousRequestFromCache();
-        } else {
-          this.fire('error', e.detail, {
-            bubbles: this.bubbles
+
+      _onPerPageChange: function(itemCount) {
+        if (this.params) this.params['per_page'] = itemCount;
+      },
+
+      _onPageChange: function(newPage) {
+        if (this.params) this.params['page'] = newPage
+      },
+
+      _onTokenChange: function(newToken) {
+        if (newToken !== sharedToken) {
+          sharedToken = newToken;
+          instances.forEach(function(instance) {
+            instance.accessToken = sharedToken;
           });
         }
+        if (this.params) this.params['access_token'] = newToken;
       },
-      _retrievePreviousRequestFromCache: function() {
-        this._setLastResponse(shared.responseCache[this.refurl + 'page' + this.page]);
-        // Inject our last response
-        this.lastRequest._setResponse(this.lastResponse);
-        this.fire('response', Object.create(this.lastRequest), {
-          bubbles: this.bubbles
-        });
+
+      _onLoadingChange: function(loading) {
+        this._setLoading(loading);
+        
+        // this.fire('loading-changed', e.detail);
+      },
+
+      _onActiveRequestsChange: function(activeRequests) {
+        this._setActiveRequests(activeRequests);
+      },
+
+      _onLastRequestChange: function(request) {
+        this._setLastRequest(request);
+      },
+      
+      _onLastResponseChange: function(response) {
+        this._setLastResponse(response);
+      },
+
+      _onLastErrorChange: function(error) {
+        this._setLastError(error);
+      },
+
+      // _updateIfNoneMatch: function(refurl, page) {
+      //   var etag = shared.headerCache[refurl + 'page' + page];
+      //   if (etag) {
+      //     this._setHeader('If-None-Match', etag);
+      //   }
+      // },
+
+      _onRequest: function(e) {
+        e.stopPropagation();
+        this.fire('request', {
+          request: e.detail.request,
+          options: e.detail.requestOptions
+        }, {bubbles: this.bubbles});
+
+        this.fire('iron-ajax-request', {
+          request: e.detail.request,
+          options: e.detail.requestOptions
+        }, {bubbles: this.bubbles});
+      },
+
+      _onResponse: function(e) {
+        e.stopPropagation();
+
+        caches.open(this._cacheName).then(function(cache) {
+          var xhr = e.detail.xhr;
+          
+          var r = new Response(xhr.response, {
+            type: 'basic',
+            url: xhr.url,            
+            headers: xhr.responseHeaders,
+            status: xhr.status,
+            statusText: xhr.statusText,
+          });
+          debugger;
+          
+          return cache.put(e.detail, r);
+        }).then(function() {
+          this.fire('response', e.detail.response, {bubbles: this.bubbles});
+          this.fire('iron-ajax-response', e.detail.response, {bubbles: this.bubbles});
+        }.bind(this));
+      },
+
+      _onError: function(e) {
+        e.stopPropagation();
+        this.fire('iron-ajax-error', {
+          request: e.detail.request,
+          error: e.detail.error
+        }, {bubbles: this.bubbles});
+        this.fire('error', {
+          request: e.detail.request,
+          error: e.detail.error
+        }, {bubbles: this.bubbles});
+
+        // shared.headerCache[this.refurl] = e.detail.request.xhr.getResponseHeader('ETag');
+        // Cache responses to save the rate limit of the GitHub api
+        // if (e.detail.request.status === 304) {
+        //   this._retrievePreviousRequestFromCache();
+        // } else {
+        // }
+      },
+
+      // _retrievePreviousRequestFromCache: function() {
+      //   this._setLastResponse(shared.responseCache[this.refurl + 'page' + this.page]);
+      //   // Inject our last response
+      //   this.lastRequest._setResponse(this.lastResponse);
+      //   this.fire('response', Object.create(this.lastRequest), {
+      //     bubbles: this.bubbles
+      //   });
+      // }
+
+      /**
+       * RE-EXPORTED FROM IRON-AJAX
+       */
+      get queryString () {
+        return this.$.ajax.queryString;
+      },
+      get requestUrl() {
+        return this.$.ajax.requestUrl;
+      },
+      get requestHeaders() {
+        return this.$.ajax.requestHeaders
+      },
+
+      toRequestOptions: function() {
+        return this.$.ajax.toRequestOptions();
+      },
+      generateRequest: function() {
+        return this.$.ajax.generateRequest();
       }
     });
   })();
