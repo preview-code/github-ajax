@@ -4,40 +4,12 @@ Copyright (c) 2017 Preview-Code. All rights reserved.
 This code may only be used under the BSD style license found in LICENSE.txt
 -->
 <link rel="import" href="../polymer/polymer.html">
-<link rel="import" href="../iron-ajax/iron-ajax.html">
 
 <!--
-Wrapper around iron-ajax to enable caching of ETags and proper handling
-of params with oAuth tokens.
-
 @demo demo/index.html
 -->
 <dom-module id="github-ajax">
   <template>
-    <!--<iron-ajax
-      id="ajax"
-      url="[[url]]"
-      params="[[params]]"
-      method="[[method]]"
-      headers="[[headers]]"
-      content-type="[[contentType]]"
-      body="[[body]]"
-      sync="[[sync]]"
-      handle-as="[[handleAs]]"
-      with-credentials="[[withCredentials]]"
-      timeout="[[timeout]]"
-      auto="[[auto]]"
-      verbose="[[verbose]]"
-      loading="{{_loading}}"
-      last-error="{{_lastError}}"
-      last-request="{{_lastRequest}}"
-      last-response="{{_lastResponse}}"
-      active-requests="{{_activeRequests}}"
-      debounce-duration="{{debounceDuration}}"
-      json-prefix="[[jsonPrefix]]"
-      on-request="_onRequest"
-      on-response="_onResponse"
-      on-error="_onError"></iron-ajax>-->
   </template>
   <script>
   (function() {
@@ -67,136 +39,89 @@ of params with oAuth tokens.
 
         /**
          * OAuth access token for authenticated requests, e.g.: fetching the current user.
-         * @type{String}
+         * @type {String}
          */
         accessToken: {
           type: String,
           observer: '_onTokenChange'
         },
 
-        _loading: {
-          type: Boolean,
-          observer: '_onLoadingChange'
-        },
-
-        _lastRequest: {
-          type: Boolean,
-          observer: '_onLastRequestChange'
-        },
-
-        _lastResponse: {
-          type: Boolean,
-          observer: '_onLastResponseChange'
-        },
-
-        _lastError: {
-          type: Boolean,
-          observer: '_onLastErrorChange'
-        },
-
-        _activeRequests: {
-          type: Array,
-          observer: '_onActiveRequestsChange'
-        },
-
-
         /**
-         * RE-EXPORTED PROPERTIES FROM IRON-AJAX
+         * Amount of milliseconds before the request is considered to be timed out.
+         * A timeout triggers the `github-error` event and sets the appropriate lastError and lastRequest property.
+         * 
+         * Note that the timeout property cannot cancel the actual in-flight request,
+         * since the Fetch API does not yet have support for interrupting requests.
+         * 
+         * @type {Number}
          */
+        timeout: {
+          type: Number,
+          value: null
+        },
+
         url: String,
+
         params: {
           type: Object,
           value: function() { return {} }
         },
+
         method: {
           type: String,
           value: 'GET'
         },
+
         headers: {
           type: Object,
           value: function() { return {} }
         },
+
         contentType: {
           type: String,
           value: null
         },
+
         body: {
           type: Object,
           value: null
         },
-        sync: {
-          type: Boolean,
-          value: false
-        },
+
         handleAs: {
           type: String,
           value: 'json'
         },
-        withCredentials: {
-          type: Boolean,
-          value: false
-        },
-        timeout: {
-          type: Number,
-          value: 0
-        },
-        auto: {
-          type: Boolean,
-          value: false
-        },
-        verbose: {
-          type: Boolean,
-          value: false
-        },
+
         lastRequest: {
           type: Object,
           notify: true,
           readOnly: true
         },
+
         loading: {
           type: Boolean,
           notify: true,
           readOnly: true,
         },
+
         lastResponse: {
           type: Object,
           notify: true,
           readOnly: true
         },
+
         lastError: {
           type: Object,
           notify: true,
           readOnly: true
         },
-        activeRequests: {
-          type: Array,
-          notify: true,
-          readOnly: true,
-        },
-        debounceDuration: {
-          type: Number,
-          value: 0,
-          notify: true
-        },
-        jsonPrefix: {
-          type: String,
-          value: ''
-        },
-        bubbles: {
-          type: Boolean,
-          value: false
-        },
-
+        
         _cacheName: {
           type: String,
           value: 'github-cache'
         }
       },
       
-      observers: [
-        '_requestOptionsChanged(page, perPage, accessToken)'
-        // '_updateIfNoneMatch(refurl, page)'
-      ],
 
       attached: function() {
         if (sharedToken) this.accessToken = sharedToken;
@@ -204,12 +129,7 @@ of params with oAuth tokens.
       },
 
       detached: function() {
-        var index = instances.indexOf(this);
-        instances.splice(index, 1);
-      },
-
-      _requestOptionsChanged: function() {
-        this.$.ajax._requestOptionsChanged();
+        instances.splice(instances.indexOf(this), 1);
       },
 
       _onPerPageChange: function(itemCount) {
@@ -230,117 +150,229 @@ of params with oAuth tokens.
         if (this.params) this.params['access_token'] = newToken;
       },
 
-      _onLoadingChange: function(loading) {
-        this._setLoading(loading);
-        
-        // this.fire('loading-changed', e.detail);
-      },
-
-      _onActiveRequestsChange: function(activeRequests) {
-        this._setActiveRequests(activeRequests);
-      },
-
-      _onLastRequestChange: function(request) {
-        this._setLastRequest(request);
-      },
-      
-      _onLastResponseChange: function(response) {
-        this._setLastResponse(response);
-      },
-
-      _onLastErrorChange: function(error) {
-        this._setLastError(error);
-      },
-
-      // _updateIfNoneMatch: function(refurl, page) {
-      //   var etag = shared.headerCache[refurl + 'page' + page];
-      //   if (etag) {
-      //     this._setHeader('If-None-Match', etag);
-      //   }
-      // },
-
-      _onRequest: function(e) {
-        e.stopPropagation();
-        this.fire('request', {
-          request: e.detail.request,
-          options: e.detail.requestOptions
-        }, {bubbles: this.bubbles});
-
-        this.fire('iron-ajax-request', {
-          request: e.detail.request,
-          options: e.detail.requestOptions
-        }, {bubbles: this.bubbles});
-      },
-
-      _onResponse: function(e) {
-        e.stopPropagation();
-
-        caches.open(this._cacheName).then(function(cache) {
-          var xhr = e.detail.xhr;
-          
-          var r = new Response(xhr.response, {
-            type: 'basic',
-            url: xhr.url,            
-            headers: xhr.responseHeaders,
-            status: xhr.status,
-            statusText: xhr.statusText,
-          });
-          debugger;
-          
-          return cache.put(e.detail, r);
-        }).then(function() {
-          this.fire('response', e.detail.response, {bubbles: this.bubbles});
-          this.fire('iron-ajax-response', e.detail.response, {bubbles: this.bubbles});
-        }.bind(this));
-      },
-
-      _onError: function(e) {
-        e.stopPropagation();
-        this.fire('iron-ajax-error', {
-          request: e.detail.request,
-          error: e.detail.error
-        }, {bubbles: this.bubbles});
-        this.fire('error', {
-          request: e.detail.request,
-          error: e.detail.error
-        }, {bubbles: this.bubbles});
-
-        // shared.headerCache[this.refurl] = e.detail.request.xhr.getResponseHeader('ETag');
-        // Cache responses to save the rate limit of the GitHub api
-        // if (e.detail.request.status === 304) {
-        //   this._retrievePreviousRequestFromCache();
-        // } else {
-        // }
-      },
-
-      // _retrievePreviousRequestFromCache: function() {
-      //   this._setLastResponse(shared.responseCache[this.refurl + 'page' + this.page]);
-      //   // Inject our last response
-      //   this.lastRequest._setResponse(this.lastResponse);
-      //   this.fire('response', Object.create(this.lastRequest), {
-      //     bubbles: this.bubbles
-      //   });
-      // }
-
       /**
-       * RE-EXPORTED FROM IRON-AJAX
+       * The query string that should be appended to the `url`, serialized from
+       * the current value of `params`.
+       *
+       * @return {string}
        */
       get queryString () {
-        return this.$.ajax.queryString;
-      },
-      get requestUrl() {
-        return this.$.ajax.requestUrl;
-      },
-      get requestHeaders() {
-        return this.$.ajax.requestHeaders
+        const queryParts = [];
+        var param;
+        var value;
+
+        for (param in this.params) {
+          value = this.params[param];
+          param = window.encodeURIComponent(param);
+
+          if (Array.isArray(value)) {
+            for (var i = 0; i < value.length; i++) {
+              queryParts.push(param + '=' + window.encodeURIComponent(value[i]));
+            }
+          } else if (value !== null) {
+            queryParts.push(param + '=' + window.encodeURIComponent(value));
+          } else {
+            queryParts.push(param);
+          }
+        }
+
+        return queryParts.join('&');
       },
 
-      toRequestOptions: function() {
-        return this.$.ajax.toRequestOptions();
+      /**
+       * The `url` with query string (if `params` are specified).
+       *
+       * @return {string}
+       */
+      get requestUrl() {
+        const queryString = this.queryString;
+        const url = this.url || '';
+
+        if (queryString) {
+          const bindingChar = url.indexOf('?') >= 0 ? '&' : '?';
+          return url + bindingChar + queryString;
+        }
+
+        return url;
       },
+
+      /**
+       * An object that maps header names to header values, first applying the
+       * the value of `Content-Type` and then overlaying the headers specified
+       * in the `headers` property.
+       *
+       * @return {Object}
+       */
+      get requestHeaders() {
+        const headers = new Headers();
+        var contentType = this.contentType;
+        if (contentType == null && (typeof this.body === 'string')) {
+          contentType = 'application/x-www-form-urlencoded';
+        }
+        if (contentType) {
+          headers.append('content-type', contentType);
+        }
+
+        var acceptType = {
+          'json': 'application/json',
+          'text': 'text/plain',
+          'html': 'text/html',
+          'arraybuffer': 'application/octet-stream'
+        }[this.handleAs];
+
+        var header;
+
+        if (this.headers instanceof Object) {
+          for (header in this.headers) {
+            headers.append(header, this.headers[header].toString());
+          }
+
+          if (acceptType && !headers['accept']) {
+            headers.append('accept', acceptType);
+          }
+        }
+        return headers;
+      },
+
+      /**
+       * @param {Object} object The object to encode as x-www-form-urlencoded.
+       * @return {string} .
+       */
+      _wwwFormUrlEncode: function(object) {
+        if (!object) {
+          return '';
+        }
+        var pieces = [];
+        Object.keys(object).forEach(function(key) {
+          // TODO(rictic): handle array values here, in a consistent way with
+          //   iron-ajax params.
+          pieces.push(
+              this._wwwFormUrlEncodePiece(key) + '=' +
+              this._wwwFormUrlEncodePiece(object[key]));
+        }, this);
+        return pieces.join('&');
+      },
+
+      /**
+       * @param {*} str A key or value to encode as x-www-form-urlencoded.
+       * @return {string} .
+       */
+      _wwwFormUrlEncodePiece: function(str) {
+        // Spec says to normalize newlines to \r\n and replace %20 spaces with +.
+        // jQuery does this as well, so this is likely to be widely compatible.
+        if (str === null) {
+          return '';
+        }
+        return encodeURIComponent(str.toString().replace(/\r?\n/g, '\r\n'))
+            .replace(/%20/g, '+');
+      },
+
+      _encodeBody: function(headers) {
+        if (!this.body) {
+          return;
+        } else if (headers.has('content-type') &&
+                   headers.get('content-type') === 'application/x-www-form-urlencoded' &&
+                   typeof this.body === 'object') {
+          return this._wwwFormUrlEncode(this.body);
+        } else if (this.body instanceof FormData
+                || this.body instanceof ArrayBuffer
+                || typeof this.body === 'string') {
+          return this.body;
+        } else {
+          return JSON.stringify(this.body)
+        }
+      },
+
       generateRequest: function() {
-        return this.$.ajax.generateRequest();
+        const headers = this.requestHeaders
+        const request = new Request(this.requestUrl, {
+          method: this.method,
+          headers: headers,
+          body: this._encodeBody(headers)
+        });
+
+        this._setLastRequest(request);
+        this._setLoading(true);
+        
+        const completes = new Promise((resolve, reject) => {
+          if (this.timeout) setTimeout(() => reject({timeout: true, message: 'The request timed out'}), this.timeout);
+          fetch(request).then(resolve).catch(reject);
+        }).then(response => {
+            if (this.lastRequest === request)
+              return this._checkResponseForErrors(response)
+          })
+          .then(this._cacheResponse.bind(this))
+          .then(this._decodeResponseBody.bind(this))
+          .then(this._onResponse.bind(this))
+          .catch(this._onError.bind(this));         
+        
+        this.fire('request', request);
+        return completes;
+      },
+
+      _checkResponseForErrors: function(response) {
+        if (response.ok) {
+          return Promise.resolve(response);
+        } else {
+          return Promise.reject({
+            message: response.statusText,
+            errorCode: response.status,
+            response: response
+          });
+        }
+      },
+
+
+      _cacheResponse: function(response) {
+          // caches.open(this._cacheName).then(function(cache) {
+          //   var xhr = e.detail.xhr;
+            
+          //   var r = new Response(xhr.response, {
+          //     type: 'basic',
+          //     url: xhr.url,            
+          //     headers: xhr.responseHeaders,
+          //     status: xhr.status,
+          //     statusText: xhr.statusText,
+          //   });
+          //   debugger;
+            
+          //   return cache.put(e.detail, r);
+          // }).then(function() {
+          //   this.fire('response', e.detail.response, {bubbles: this.bubbles});
+          //   this.fire('iron-ajax-response', e.detail.response, {bubbles: this.bubbles});
+          // }.bind(this));
+          return Promise.resolve(response);
+      },
+
+
+      _decodeResponseBody: function(response) {
+        if (!response) return;
+        if (this.handleAs === 'json') {
+          return response.json();
+        } else if (this.handleAs === 'text') {
+          return response.text();
+        } else if (this.handleAs === 'arrayBuffer') {
+          return response.arrayBuffer();
+        }
+        throw new Error('Unrecognized `handleAs` property: ' + this.handleAs);
+      },
+
+
+      _onResponse: function(responseBody) {
+        if (!responseBody) return;
+        this._setLoading(false);
+        this._setLastError(null);
+        this._setLastResponse(responseBody);
+        this.fire('github-response', responseBody);
+      },
+
+      _onError: function(err) {
+        this._setLoading(false);
+        this._setLastResponse(null);
+        this._setLastError(err);
+        this.fire('github-error', err);
       }
+      
     });
   })();
   </script>
