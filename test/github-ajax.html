@@ -649,7 +649,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         beforeEach(() => {
           ajax = fixture('Cache');
           ajax._onError = e => { throw e; }
-          caches.delete('github-cache');
+          caches.delete('github-cache-v1');
         });
 
         it('sends no ETag when cache is empty', async () => {
@@ -727,6 +727,66 @@ This code may only be used under the BSD style license found in LICENSE.txt
           expect(cachedResponse).to.be.undefined;
         });
 
+        it('does not cache POST responses', async () => {
+          var receivedRequest;
+          ajax.method = 'POST';
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(200, responseHeaders.jsonWithEtag, responses[0]);
+          });
+
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
+
+          expect(cachedResponse).to.be.undefined;
+        });
+
+        it('does not cache diff responses', async () => {
+          var receivedRequest;
+          ajax.headers['accept'] = 'application/vnd.github.VERSION.diff'
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(200, {'Content-Type': 'application/vnd.github.VERSION.diff'}, responses[0]);
+          });
+
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
+
+          expect(cachedResponse).to.be.undefined;
+        });
+
+        it('does not cache black-cat-preview responses', async () => {
+          var receivedRequest;
+          ajax.headers['accept'] = 'application/vnd.github.black-cat-preview+json'
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(200, {'Content-Type': 'application/vnd.github.black-cat-preview+json'}, responses[0]);
+          });
+
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
+
+          expect(cachedResponse).to.be.undefined;
+        });
+
+        it('does not cache VERSION.raw responses', async () => {
+          var receivedRequest;
+          ajax.headers['accept'] = 'application/vnd.github.VERSION.raw'
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(200, {'content-type': 'application/vnd.github.VERSION.raw'}, responses[0]);
+          });
+
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
+
+          expect(cachedResponse).to.be.undefined;
+        });
+
         it('retrieves the response from cache on a 304', async () => {
           onRequest(request => respondWith(200, responseHeaders.jsonWithEtag, responses[0]));
           await ajax.generateRequest();
@@ -738,7 +798,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
         it('fails to retrieve a response from cache when ETag is unknown', done => {
           ajax = fixture('Cache');
-          caches.delete('github-cache');
+          caches.delete('github-cache-v1');
 
           onRequest(() => respondWith(304, responseHeaders.jsonWithEtag));
           
@@ -784,31 +844,8 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
           expect(await cachedResponse.json()).to.equal(responses[1]);
           expect(cachedResponse.headers.get('ETag')).to.equal(newETag);
-        })
-
-      //   it('corrects 304 to response from cache', function(done) {
-      //     addEventListener(one, 'response', function(e) {
-      //       var request = e.detail;
-      //       if (request.status !== 304) {
-      //         return;
-      //       }
-      //       assert.deepEqual(request.response, {
-      //         success: true
-      //       });
-      //       done();
-      //     });
-      //     one.generateRequest();
-      //   });
-
-      //   it('new element fetches from headercache', function(done) {
-      //     var el = document.createElement('github-ajax');
-      //     el.refurl = 'github.json';
-      //     addEventListener(el, 'response', () => {
-      //       assert.equal(etag, responseHeaders.ETag);
-      //       done();
-      //     });
-      //     el.generateRequest();
-      //   });
+        });
+        
       });
     });
   </script>
