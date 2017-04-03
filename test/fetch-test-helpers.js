@@ -5,11 +5,17 @@ const serverError = async (code, msg) => () => new Response(null, {
   statusText: msg
 })
 
+
 const jsonOk = async body => () => new Response(JSON.stringify(body), {
   status: 200,
   headers: {
     'Content-type': 'application/json'
   }
+});
+
+const respondWith = async (code, headers, body) => () => new Response(JSON.stringify(body), {
+  status: code,
+  headers: headers
 });
 
 const echoJson = async request => (await jsonOk(request.url))();

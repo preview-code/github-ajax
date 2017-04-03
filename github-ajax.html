@@ -60,6 +60,15 @@ This code may only be used under the BSD style license found in LICENSE.txt
           value: null
         },
 
+        /**
+         * Set this property to true to completely disable caching of GitHub responses.
+         * Mainly used for testing.
+         */
+        noCache: {
+          type: Boolean,
+          value: false
+        },
+
         url: String,
 
         params: {
@@ -284,34 +293,64 @@ This code may only be used under the BSD style license found in LICENSE.txt
       },
 
       generateRequest: function() {
-        const headers = this.requestHeaders
-        const request = new Request(this.requestUrl, {
-          method: this.method,
-          headers: headers,
-          body: this._encodeBody(headers)
-        });
-
-        this._setLastRequest(request);
-        this._setLoading(true);
-        
-        const completes = new Promise((resolve, reject) => {
-          if (this.timeout) setTimeout(() => reject({timeout: true, message: 'The request timed out'}), this.timeout);
-          fetch(request).then(resolve).catch(reject);
-        }).then(response => {
-            if (this.lastRequest === request)
-              return this._checkResponseForErrors(response)
-          })
-          .then(this._cacheResponse.bind(this))
+        return this._checkCacheForOldResponse(this.requestHeaders)
+          .then(this._fetchOrTimeout.bind(this))
+          .then(this._handle304.bind(this))
           .then(this._decodeResponseBody.bind(this))
           .then(this._onResponse.bind(this))
-          .catch(this._onError.bind(this));         
-        
-        this.fire('request', request);
-        return completes;
+          .catch(this._onError.bind(this));       ;
       },
 
-      _checkResponseForErrors: function(response) {
-        if (response.ok) {
+      _checkCacheForOldResponse: function(headers) {
+        const request = this._constructRequest(headers)
+        return caches.open(this._cacheName)
+          .then(cache => cache.match(request))
+          .then(cachedResponse => {
+            if (cachedResponse && cachedResponse.headers.has('ETag')) {
+              const etag = cachedResponse.headers.get('ETag');
+              headers.append('If-None-Match', etag);
+            }
+            return Promise.resolve({
+              cachedResponse: cachedResponse,
+              request: this._constructRequest(headers)
+            });
+          });
+      },
+
+      _fetchOrTimeout: function(o) {
+        this._setLastRequest(o.request);
+        this._setLoading(true);
+        this.fire('github-request', o.request);
+        
+        return Promise.race([this._timeout(), fetch(o.request).then(response => {
+          o.response = response;
+          return o;
+        })]);
+      },
+
+      _timeout: function() {
+        return new Promise((resolve, reject) => {
+          if (this.timeout) {
+            setTimeout(() => reject({timeout: true, message: 'The request timed out'})
+            , this.timeout);
+          }
+        });
+      },
+
+      _handle304: function(o) {
+        if (this.lastRequest === o.request) {
+          if (o.response.status === 304) {
+            if (!o.cachedResponse) throw Error('Received a 304, but found no matching response in cache!');
+            return o.cachedResponse;
+          } else {
+            return this._checkResponseForErrors(o.request, o.response)
+              .then(this._cacheResponse(o.request).bind(this))
+          }
+        }
+      },
+
+      _checkResponseForErrors: function(request, response) {
+        if (response.status === 200) {
           return Promise.resolve(response);
         } else {
           return Promise.reject({
@@ -322,27 +361,16 @@ This code may only be used under the BSD style license found in LICENSE.txt
         }
       },
 
-
-      _cacheResponse: function(response) {
-          // caches.open(this._cacheName).then(function(cache) {
-          //   var xhr = e.detail.xhr;
-            
-          //   var r = new Response(xhr.response, {
-          //     type: 'basic',
-          //     url: xhr.url,            
-          //     headers: xhr.responseHeaders,
-          //     status: xhr.status,
-          //     statusText: xhr.statusText,
-          //   });
-          //   debugger;
-            
-          //   return cache.put(e.detail, r);
-          // }).then(function() {
-          //   this.fire('response', e.detail.response, {bubbles: this.bubbles});
-          //   this.fire('iron-ajax-response', e.detail.response, {bubbles: this.bubbles});
-          // }.bind(this));
+      _cacheResponse: function(request) { return function(response) {
+        if (this.noCache || response.status !== 200) {
           return Promise.resolve(response);
-      },
+        } else {
+          var responseClone = response.clone();
+          return caches.open(this._cacheName)
+            .then(cache => cache.put(request, response))
+            .then(() => Promise.resolve(responseClone));
+        }
+      }},
 
 
       _decodeResponseBody: function(response) {
@@ -357,6 +385,13 @@ This code may only be used under the BSD style license found in LICENSE.txt
         throw new Error('Unrecognized `handleAs` property: ' + this.handleAs);
       },
 
+      _constructRequest: function(headers) {
+        return new Request(this.requestUrl, {
+            method: this.method,
+            headers: headers,
+            body: this._encodeBody(headers)
+          });
+      },
 
       _onResponse: function(responseBody) {
         if (!responseBody) return;

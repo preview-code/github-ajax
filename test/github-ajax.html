@@ -18,40 +18,46 @@ This code may only be used under the BSD style license found in LICENSE.txt
 <body>
   <test-fixture id="TrivialGet">
     <template>
-      <github-ajax url="https://api.github.com"></github-ajax>
+      <github-ajax url="https://api.github.com" no-cache></github-ajax>
     </template>
   </test-fixture>
   
   <test-fixture id="TrivialPost">
     <template>
       <github-ajax method="POST"
-                   url="https://api.github.com"></github-ajax>
+                   url="https://api.github.com" no-cache></github-ajax>
     </template>
   </test-fixture>
   
   <test-fixture id='BlankUrl'>
     <template>
-      <github-ajax></github-ajax>
+      <github-ajax no-cache></github-ajax>
     </template>
   </test-fixture>
 
   <test-fixture id="Timeout">
     <template>
       <github-ajax url="https://api.github.com"
-                 timeout="1"></iron-ajax>
+                 timeout="1" no-cache></iron-ajax>
     </template>
   </test-fixture>
 
   <test-fixture id="RealPost">
     <template>
-      <github-ajax method="POST" url="/httpbin/post"></github-ajax>
+      <github-ajax method="POST" url="/httpbin/post" no-cache></github-ajax>
     </template>
   </test-fixture>
 
   <test-fixture id="MultipleElements">
     <template>
+      <github-ajax id="ajax" url="https://api.github.com" no-cache></github-ajax>
+      <github-ajax id="anotherAjax" url="github" no-cache></github-ajax>
+    </template>
+  </test-fixture>
+
+  <test-fixture id="Cache">
+    <template>
       <github-ajax id="ajax" url="https://api.github.com"></github-ajax>
-      <github-ajax id="anotherAjax" url="github"></github-ajax>
     </template>
   </test-fixture>
 
@@ -197,66 +203,11 @@ This code may only be used under the BSD style license found in LICENSE.txt
         });
 
         it('reflects the loading state in the `loading` property', async () => {
-          const respond = onGET(wait);
-          const requestComplete = ajax.generateRequest();
-          expect(ajax.loading).to.be.true;
-          respond(jsonOk({success: true}));
-          await requestComplete;
-          expect(ajax.loading).to.be.false;
-        });
-      });
-
-      describe('when there are multiple requests', () => {
-        var requests;
-        var completionPromises;
-
-        beforeEach(() => {
-          requests = [];
-
-          for (var i = 1; i < 4; i++) {
-            ajax.params.order = i;
-            requests.push({
-              respond: onRequest(wait),
-              completes: ajax.generateRequest()
-            });
-          }
-        });
-
-        it('avoids race conditions with last response', async () => {
-          expect(ajax.lastResponse).to.be.equal(undefined);
-
-          // Resolving the oldest request doesn't update lastResponse.
-          requests[0].respond(echoJson);
-          await requests[0].completes;
-          expect(ajax.lastResponse).to.be.equal(undefined);
-
-          // Resolving the most recent request does!
-          requests[2].respond(echoJson);
-          await requests[2].completes;
-          expect(getRequestParam(ajax.lastResponse, 'order')).to.be.equal('3');
-          
-          // Resolving an out of order stale request after does nothing!
-          requests[1].respond(echoJson);
-          await requests[1].completes;
-          expect(getRequestParam(ajax.lastResponse, 'order')).to.be.equal('3');
-        });
-
-        it('`loading` is true while the last one is loading', async () => {
-          expect(ajax.loading).to.be.true;
-
-          // Resolving the oldest request doesn't update lastResponse.
-          requests[0].respond(echoJson);
-          await requests[0].completes;
-          expect(ajax.loading).to.be.true;
-
-          // Resolving the most recent request does!
-          requests[2].respond(echoJson);
-          await requests[2].completes;
-          expect(ajax.loading).to.be.false;
-          
-          // Resolving an out of order stale request after does nothing!
-          requests[1].respond(echoJson);
-          await requests[1].completes;
+          onGET(() => {
+            expect(ajax.loading).to.be.true;
+            return jsonOk({success: true});
+          });
+          await ajax.generateRequest();
           expect(ajax.loading).to.be.false;
         });
       });
@@ -598,119 +549,242 @@ This code may only be used under the BSD style license found in LICENSE.txt
         beforeEach(() => {
           ajax = fixture('MultipleElements')[0];
           anotherAjax = fixture('MultipleElements')[1];
+          ajax._onError = e => { throw e; }
+          anotherAjax._onError = e => { throw e; }
         });
 
-        it('does not add `access_token` to request headers if `accessToken` is not present', () => {
-          
+        it('does not add `access_token` to request headers if `accessToken` is not present', async () => {
           onRequest((request) => {
-            expect(getRequestParam(request, 'access_token')).to.be.undefined;
+            expect(getRequestParam(request.url, 'access_token')).to.be.undefined;
+            return jsonOk({});
+          });
+          await ajax.generateRequest();
+        });
+
+        it('adds `access_token` to request headers if `accessToken` is present', async () => {
+          onRequest(request => {
+            expect(getRequestParam(request.url, 'access_token')).to.equal(token);
+            return jsonOk({hello: 'world'})
+          });
+          
+          ajax.accessToken = token;
+          await ajax.generateRequest();
+        });
+
+        it('does not add `per_page` to request headers if `perPage` is not present', async () => {
+          onRequest((request) => {
+            expect(getRequestParam(request.url, 'per_page')).to.be.undefined;
+            return jsonOk({});
+          });
+          await ajax.generateRequest();
+        });
+
+        it('adds `per_page` to request headers if `perPage` is present', async () => {
+          onRequest(request => {
+            expect(getRequestParam(request.url, 'per_page')).to.equal('42');
+            return jsonOk({hello: 'world'})
+          });
+          
+          ajax.perPage = 42;
+          await ajax.generateRequest();
+        });
+
+        it('does not add `page` to request headers if `page` property is not present', async () => {
+          onRequest((request) => {
+            expect(getRequestParam(request.url, 'page')).to.be.undefined;
+            return jsonOk({});
+          });
+          await ajax.generateRequest();
+        });
+
+        it('adds `page` to request headers if `page` property is present', async () => {
+          onRequest(request => {
+            expect(getRequestParam(request.url, 'page')).to.equal('42');
+            return jsonOk({hello: 'world'})
+          });
+          
+          ajax.page = 42;
+          await ajax.generateRequest();
+        });
+
+        it('access token is shared between instances', done => {
+          ajax.accessToken = token;
+          expect(ajax.params.access_token).to.equal(token);
+          
+          expect(anotherAjax.accessToken).to.equal(token);
+          expect(anotherAjax.params.access_token).to.equal(token);
+
+          var el = document.createElement('github-ajax');
+          document.body.appendChild(el);
+          setTimeout(() => {
+            expect(el.accessToken).to.equal(token);
+            expect(el.params.access_token).to.equal(token);
+            done();
+          }, 100);
+        });
+      });
+
+      describe('with cache enabled', () => {
+        const etag = 'SOME_ETAG';
+        const newETag = 'SOME_ETAG_v2'
+        const responseHeaders = {
+            notModified: {
+              'ETag': etag
+            },
+            jsonWithEtag: {
+              'Content-Type': 'application/json',
+              'ETag': etag
+            },
+            jsonWithNewEtag: {
+              'Content-Type': 'application/json',
+              'ETag': newETag
+            }
+          };
+
+        const responses = [
+            '{"success":true}',
+            '{"anotherSuccess: true"}'
+          ];
+
+        beforeEach(() => {
+          ajax = fixture('Cache');
+          ajax._onError = e => { throw e; }
+          caches.delete('github-cache');
+        });
+
+        it('sends no ETag when cache is empty', async () => {
+          onRequest(request => {
+            expect(request.headers.has('If-None-Match')).to.be.false;
+            return jsonOk({});
+          });
+          await ajax.generateRequest();
+        });
+
+        it('opens a cache with the correct name', async () => {
+          onRequest(() => respondWith(200, responseHeaders.jsonWithEtag, responses[0]));
+          await ajax.generateRequest();
+          const hasCreatedCache = await caches.has(ajax._cacheName);
+          expect(hasCreatedCache).to.be.true;
+        });
+
+        it('caches responses with 200 status codes', async () => {
+          var receivedRequest;
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(200, responseHeaders.jsonWithEtag, responses[0])
+          });
+
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
+
+          expect(await cachedResponse.json()).to.equal(responses[0]);
+          expect(cachedResponse.headers.get('ETag')).to.equal(etag);
+        });
+
+        it('does not cache 304', async () => {
+          var receivedRequest;
+          
+          onRequest(() => respondWith(200, responseHeaders.jsonWithEtag, responses[0]));
+          await ajax.generateRequest();
+
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(304, responseHeaders.jsonWithEtag)
+          });
+
+          ajax._cacheResponse = () => { throw Error('Expected this response to not be cached') };
+          await ajax.generateRequest();
+        });
+
+        it('does not cache 404', async () => {
+          var receivedRequest;
+          ajax._onError = () => {};
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(404, responseHeaders.jsonWithEtag)
+          });
+
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
+
+          expect(cachedResponse).to.be.undefined;
+        });
+
+        it('does not cache 500', async () => {
+          var receivedRequest;
+          ajax._onError = () => {};
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(500, responseHeaders.jsonWithEtag);
+          });
+
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
+
+          expect(cachedResponse).to.be.undefined;
+        });
+
+        it('retrieves the response from cache on a 304', async () => {
+          onRequest(request => respondWith(200, responseHeaders.jsonWithEtag, responses[0]));
+          await ajax.generateRequest();
+          const firstResponse = ajax.lastResponse;
+          onRequest(request => respondWith(304, responseHeaders.jsonWithEtag));
+          await ajax.generateRequest();
+          expect(ajax.lastResponse).to.deep.equal(firstResponse);
+        });
+
+        it('fails to retrieve a response from cache when ETag is unknown', done => {
+          ajax = fixture('Cache');
+          caches.delete('github-cache');
+
+          onRequest(() => respondWith(304, responseHeaders.jsonWithEtag));
+          
+          ajax.addEventListener('github-error', e => { 
+            expect(e.detail.message).to.equal('Received a 304, but found no matching response in cache!');
+            done();
+          });
+
+          ajax.addEventListener('github-response', () => { 
+            throw Error('Expected no response because cache is empty') 
           });
           ajax.generateRequest();
         });
 
-        // it('adds `access_token` to request headers if `accessToken` is present', () => {
-        //   respondWith(jsonOk({hello: 'world'}));
-          
-        //   ajax.accessToken = token;
-        //   ajax.generateRequest();
-        //   var accessToken = getRequestParam(server.requests[0], 'access_token');
-        //   expect(accessToken).to.equal(token);
-        // });
+        it('resends correct ETag on new request',async () => {
+          onRequest(request => {
+            expect(request.headers.has('If-None-Match')).to.be.false;
+            return respondWith(200, responseHeaders.jsonWithEtag, responses[0])
+          });
+          await ajax.generateRequest();
 
-        // it('does not add `per_page` to request headers if `perPage` is not present', () => {
-        //   ajax.generateRequest();
-        //   expect(getRequestParam(server.requests[0], 'per_page')).to.be.undefined;
-        // });
+          onRequest(request => {
+            expect(request.headers.get('If-None-Match')).to.equal(etag);
+            return respondWith(200, responseHeaders.jsonWithEtag, responses[0])
+          });
+          await ajax.generateRequest();
+        });
 
-        // it('adds `per_page` to request headers if `perPage` is present', () => {
-        //   ajax.perPage = 42;
-        //   ajax.generateRequest();
-        //   var perPage = getRequestParam(server.requests[0], 'per_page');
-        //   expect(perPage).to.equal('42');
-        // });
+        it('updates the cache when content has changed', async () => {
+          var receivedRequest;
 
-        // it('does not add `page` to request headers if `page` property is not present', () => {
-        //   ajax.generateRequest();
-        //   expect(getRequestParam(server.requests[0], 'page')).to.be.undefined;
-        // });
+          onRequest(() => respondWith(200, responseHeaders.jsonWithEtag, responses[0]));
+          await ajax.generateRequest();
 
-        // it('adds `page` to request headers if `page` property is present', () => {
-        //   ajax.page = 42;
-        //   ajax.generateRequest();
-        //   var page = getRequestParam(server.requests[0], 'page');
-        //   expect(page).to.equal('42');
-        // });
+          onRequest(request => {
+            receivedRequest = request;
+            expect(request.headers.get('If-None-Match')).to.equal(etag);
+            return respondWith(200, responseHeaders.jsonWithNewEtag, responses[1])
+          });
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
 
-        // it('access token is shared between instances', () => {
-        //   ajax.accessToken = token;
-        //   expect(ajax.params.access_token).to.equal(token);
-          
-        //   expect(anotherAjax.accessToken).to.equal(token);
-        //   expect(anotherAjax.params.access_token).to.equal(token);
-
-        //   var el = document.createElement('github-ajax');
-        //   document.body.appendChild(el);
-        //   expect(el.accessToken).to.equal(token);
-        //   expect(el.params.access_token).to.equal(token);
-        // });
-      });
-
-      // describe('Caching', () => {
-      //   var etag = 'SOME_ETAG';
-      //   var newETag = 'SOME_ETAG_v2'
-      //   var request, responseHeaders, responses;
-
-      //   beforeEach(() => {
-
-      //     responseHeaders = {
-      //       notModified: {
-      //         'ETag': etag
-      //       },
-      //       jsonWithEtag: {
-      //         'Content-Type': 'application/json',
-      //         'ETag': etag
-      //       },
-      //       jsonWithNewEtag: {
-      //         'Content-Type': 'application/json',
-      //         'ETag': newETag
-      //       }
-      //     }
-
-      //     responses = [
-      //       '{"success":true}',
-      //       '{"anotherSuccess: true"}'
-      //     ];
-
-      //     caches.delete('github-cache');
-      //   });
-
-      //   it('sends no ETag when cache is empty', () => {
-      //     ajax.generateRequest();
-      //     expect(server.requests[0].requestHeaders['if-none-match']).to.be.undefined;
-      //   });
-
-      //   it('opens a cache with the correct name', async () => {
-      //     ajax.generateRequest();
-      //     server.requests[0].respond(200, responseHeaders.jsonWithEtag, responses[0]);
-      //     expect(await caches.has(ajax._cacheName)).to.be.true;
-      //   });
-
-      //   it('caches responses', async () => {
-      //     ajax.generateRequest();
-      //     server.requests[0].respond(200, responseHeaders.jsonWithEtag, responses[0]);
-      //     const cache = await caches.open(ajax._cacheName);
-      //     const cachedResponse = await cache.match(server.requests[0]);
-      //     expect(cachedResponse.body).to.equal(responses[0]);
-      //     expect(cachedResponse.etag).to.equal(etag);
-      //   });
-
-        // it('resends correct ETag on new request', () => {
-        //   ajax.generateRequest();
-        //   ajax.generateRequest();
-
-        //   server.requests[0].respond(200, responseHeaders.jsonWithEtag, responses[0]);
-        //   expect(server.requests[0].requestHeaders['if-none-match']).to.equal(etag);
-        // });
+          expect(await cachedResponse.json()).to.equal(responses[1]);
+          expect(cachedResponse.headers.get('ETag')).to.equal(newETag);
+        })
 
       //   it('corrects 304 to response from cache', function(done) {
       //     addEventListener(one, 'response', function(e) {
@@ -735,7 +809,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
       //     });
       //     el.generateRequest();
       //   });
-      // });
+      });
     });
   </script>
 
