@@ -3,7 +3,7 @@ node_js: stable
 dist: trusty
 sudo: required
 addons:
-  firefox: "50.0"
+  firefox: "52.0"
   apt:
     sources:
     - google-chrome
