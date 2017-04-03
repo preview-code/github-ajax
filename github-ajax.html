@@ -253,8 +253,6 @@ This code may only be used under the BSD style license found in LICENSE.txt
         }
         var pieces = [];
         Object.keys(object).forEach(function(key) {
-          // TODO(rictic): handle array values here, in a consistent way with
-          //   iron-ajax params.
           pieces.push(
               this._wwwFormUrlEncodePiece(key) + '=' +
               this._wwwFormUrlEncodePiece(object[key]));
@@ -298,7 +296,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
           .then(this._handle304.bind(this))
           .then(this._decodeResponseBody.bind(this))
           .then(this._onResponse.bind(this))
-          .catch(this._onError.bind(this));       ;
+          .catch(this._onError.bind(this));
       },
 
       _checkCacheForOldResponse: function(headers) {
