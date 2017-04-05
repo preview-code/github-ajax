@@ -15,9 +15,9 @@
       id="githubSearch"
       url="https://api.github.com/search/code"
       last-response="{{last}}"
-      on-error="_error"
-      on-request="_req"
-      on-response="_res"
+      on-github-error="_error"
+      on-github-request="_req"
+      on-github-response="_res"
       params="[[queryParams]]"
     ></github-ajax>
 

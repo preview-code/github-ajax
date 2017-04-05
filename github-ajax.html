@@ -236,7 +236,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
             headers.append(header, this.headers[header].toString());
           }
 
-          if (acceptType && !headers['accept']) {
+          if (acceptType && !headers.has('accept')) {
             headers.append('accept', acceptType);
           }
         }
@@ -315,9 +315,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
             });
           });
         } else {
-          return Promise.resolve({
-            request: request
-          });
+          return Promise.resolve({request: request});
         }
       },
 
@@ -397,23 +395,10 @@ This code may only be used under the BSD style license found in LICENSE.txt
       },
 
       _shouldUseCache: function(r) {
-        const nonCachedContent = [
-          'application/vnd.github.VERSION.diff',
-          'application/vnd.github.black-cat-preview+json',
-          'application/vnd.github.VERSION.raw'
-        ]
 
         if (r instanceof Request) {
-          for (var i = 0, l = nonCachedContent.length; i < l; i++) {
-            if (nonCachedContent[i] === r.headers.get('Accept'))
-              return false;
-          }
           return !this.noCache && this.method === 'GET';
         } else if (r instanceof Response) {
-          for (var i = 0, l = nonCachedContent.length; i < l; i++) {
-            if (nonCachedContent[i] === r.headers.get('Content-Type'))
-              return false;
-          }
           return !this.noCache && this.method === 'GET' && r.status === 200;
         }
       },

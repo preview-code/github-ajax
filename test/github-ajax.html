@@ -742,51 +742,6 @@ This code may only be used under the BSD style license found in LICENSE.txt
           expect(cachedResponse).to.be.undefined;
         });
 
-        it('does not cache diff responses', async () => {
-          var receivedRequest;
-          ajax.headers['accept'] = 'application/vnd.github.VERSION.diff'
-          onRequest(r => {
-            receivedRequest = r;
-            return respondWith(200, {'Content-Type': 'application/vnd.github.VERSION.diff'}, responses[0]);
-          });
-
-          await ajax.generateRequest();
-          const cache = await caches.open(ajax._cacheName);
-          const cachedResponse = await cache.match(receivedRequest);
-
-          expect(cachedResponse).to.be.undefined;
-        });
-
-        it('does not cache black-cat-preview responses', async () => {
-          var receivedRequest;
-          ajax.headers['accept'] = 'application/vnd.github.black-cat-preview+json'
-          onRequest(r => {
-            receivedRequest = r;
-            return respondWith(200, {'Content-Type': 'application/vnd.github.black-cat-preview+json'}, responses[0]);
-          });
-
-          await ajax.generateRequest();
-          const cache = await caches.open(ajax._cacheName);
-          const cachedResponse = await cache.match(receivedRequest);
-
-          expect(cachedResponse).to.be.undefined;
-        });
-
-        it('does not cache VERSION.raw responses', async () => {
-          var receivedRequest;
-          ajax.headers['accept'] = 'application/vnd.github.VERSION.raw'
-          onRequest(r => {
-            receivedRequest = r;
-            return respondWith(200, {'content-type': 'application/vnd.github.VERSION.raw'}, responses[0]);
-          });
-
-          await ajax.generateRequest();
-          const cache = await caches.open(ajax._cacheName);
-          const cachedResponse = await cache.match(receivedRequest);
-
-          expect(cachedResponse).to.be.undefined;
-        });
-
         it('retrieves the response from cache on a 304', async () => {
           onRequest(request => respondWith(200, responseHeaders.jsonWithEtag, responses[0]));
           await ajax.generateRequest();
