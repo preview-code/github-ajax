@@ -20,15 +20,6 @@
       on-response="_res"
       params="[[queryParams]]"
     ></github-ajax>
-<!--
-    <github-ajax
-      id="githubSearch"
-      refurl="https://api.github.com/user"
-      last-response="{{githubUser}}"
-      on-error="_error"
-      on-request="_req"
-      on-response="_res"
-      ></github-authenticated-ajax>-->
 
     <template is="dom-repeat" items="[[last.items]]">
       <div><a href="[[item.html_url]]">[[item.path]]</a></div>
