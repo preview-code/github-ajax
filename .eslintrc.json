@@ -1,4 +1,7 @@
 {
+  "parserOptions": {
+    "ecmaVersion": 2017
+  },
   "extends": "eslint:recommended",
   "rules": {
     "no-console": 0,
@@ -26,6 +29,7 @@
     "html"
   ],
   "globals": {
+    "Promise": false,
     "Polymer": false,
     "sinon": false,
     "assert": false,
@@ -33,6 +37,17 @@
     "fixture": false,
     "describe": false,
     "WCT": false,
-    "beforeEach": false
+    "beforeEach": false,
+    "afterEach": false,
+    "expect": false,
+    "onRequest": false,
+    "onGET": false,
+    "onPOST": false,
+    "jsonOk": false,
+    "wait": false,
+    "respondWith": false,
+    "serverError": false,
+    "getRequestParam": false,
+    "ArrayBuffer": false
   }
 }

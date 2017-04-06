@@ -2,7 +2,7 @@
   "name": "github-ajax",
   "version": "0.2.0",
   "main": "github-ajax.html",
-  "description": "iron-ajax wrapper specialised to the GitHub API",
+  "description": "Fetch API wrapper targeted towards usage with the GitHub API",
   "authors": [
     "Preview-Code team"
   ],
@@ -13,8 +13,7 @@
   "license": "BSD-3-Clause",
   "private": true,
   "dependencies": {
-    "polymer": "Polymer/polymer#^1.8.0",
-    "iron-ajax": "^1.4.3"
+    "polymer": "Polymer/polymer#^1.8.0"
   },
   "devDependencies": {
     "iron-component-page": "PolymerElements/iron-component-page#^1.0.0",

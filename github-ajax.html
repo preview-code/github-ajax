@@ -19,6 +19,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
     Polymer({
       is: 'github-ajax',
       properties: {
+
         /**
          * How many results must be retrieved from GitHub, default 10.
          * @type {Number}
@@ -29,16 +30,18 @@ This code may only be used under the BSD style license found in LICENSE.txt
         },
 
         /**
-         * The nth page from GitHub, used to travers through pagination.
+         * The nth page from GitHub, used to traverse through pagination.
          * @type {Number}
          */
         page: {
           type: Number,
+          readOnly: true,
           observer: '_onPageChange'
         },
 
         /**
          * OAuth access token for authenticated requests, e.g.: fetching the current user.
+         * This property will automatically be shared between all attached instances of `github-ajax`.
          * @type {String}
          */
         accessToken: {
@@ -69,56 +72,142 @@ This code may only be used under the BSD style license found in LICENSE.txt
           value: false
         },
 
+        /**
+         * The url to query, e.g.: https://api.github.com/users
+         * @type {String}
+         */
         url: String,
 
+        /**
+         * URL query parameters to send with the request.
+         * Parameter keys are represented by the object field names,
+         * param values are the values for object fields.
+         * @type{Object}
+         */
         params: {
           type: Object,
           value: function() { return {} }
         },
 
+        /**
+         * The request method to use. Defaults to `GET`.
+         * @type {String}
+         */
         method: {
           type: String,
           value: 'GET'
         },
 
+        /**
+         * Request headers to send with the request.
+         * Header keys are represented by the object field names,
+         * header values are the values for object fields.
+         * Note: setting a `Content-Type` header here will override the value
+         * specified by the `contentType` property of this element.
+         * @type {Object}
+         */
         headers: {
           type: Object,
           value: function() { return {} }
         },
 
+        /**
+         * Content type to use when sending data. If the `contentType` property
+         * is set and a `Content-Type` header is specified in the `headers`
+         * property, the `headers` property value will take precedence.
+         *
+         * Varies the handling of the `body` param.
+         * @type {String}
+         */
         contentType: {
           type: String,
           value: null
         },
 
+         /**
+         * Body content to send with the request, typically used with "POST"
+         * requests.
+         *
+         * If body is a string it will be sent unmodified. 
+         * If the body is a string and contentType is not set,
+         * then the `content-type` will default to `application/x-www-form-urlencoded"`
+         *
+         * If Content-Type is set to a value listed below, then
+         * the body will be encoded accordingly.
+         *
+         *    * `content-type="application/json"`
+         *      * body is encoded like `{"foo":"bar baz","x":1}`
+         *    * `content-type="application/x-www-form-urlencoded"`
+         *      * body is encoded like `foo=bar+baz&x=1`
+         *
+         * Otherwise the body will be passed to the browser unmodified, and it
+         * will handle any encoding (e.g. for FormData, Blob, ArrayBuffer).
+         *
+         * @type (ArrayBuffer|ArrayBufferView|Blob|Document|FormData|null|string|undefined|Object)
+         */
         body: {
           type: Object,
           value: null
         },
 
+        /**
+         * Specifies what data to store in the response, and
+         * to deliver in `response` events.
+         *
+         * One of:
+         *
+         *    `text`: uses `response.text()`.
+         *
+         *    `json`: uses `response.json()`.
+         *
+         *    `arraybuffer`: uses `response.arrayBuffer()`.
+         * 
+         * Any other value will result in an error on response.
+         */
         handleAs: {
           type: String,
           value: 'json'
         },
 
+        /**
+         * The most recent request made by this iron-ajax element.
+         * @type {Request}
+         */
         lastRequest: {
           type: Object,
           notify: true,
           readOnly: true
         },
 
+        /**
+         * True while lastRequest is in flight.
+         */
         loading: {
           type: Boolean,
           notify: true,
           readOnly: true,
         },
 
+        /**
+         * The most recent request made by this iron-ajax element.
+         * Note that lastResponse and lastError are set when lastRequest finishes,
+         * so if loading is true, then lastResponse and lastError will correspond
+         * to the result of the previous request.
+         *
+         * The type of the response is determined by the value of `handleAs` at
+         * the time that the request was generated.
+         */
         lastResponse: {
           type: Object,
           notify: true,
           readOnly: true
         },
 
+        /**
+         * lastRequest's error, if any.
+         *
+         * @type {Object}
+         */
         lastError: {
           type: Object,
           notify: true,
@@ -219,7 +308,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
           contentType = 'application/x-www-form-urlencoded';
         }
         if (contentType) {
-          headers.append('content-type', contentType);
+          headers.set('content-type', contentType);
         }
 
         var acceptType = {
@@ -233,11 +322,11 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
         if (this.headers instanceof Object) {
           for (header in this.headers) {
-            headers.append(header, this.headers[header].toString());
+            headers.set(header, this.headers[header].toString());
           }
 
           if (acceptType && !headers.has('accept')) {
-            headers.append('accept', acceptType);
+            headers.set('accept', acceptType);
           }
         }
         return headers;
@@ -309,7 +398,6 @@ This code may only be used under the BSD style license found in LICENSE.txt
           .catch(this._onError.bind(this));
       },
 
-      
       _fetchOrTimeout: function(request) {
         this._setLastRequest(request);
         this._setLoading(true);

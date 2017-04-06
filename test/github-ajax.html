@@ -64,7 +64,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
   <script>
     'use strict';
     describe('<github-ajax>', function () {
-      var ajax, anotherAjax;
+      var ajax;
       var token = 'VERY_SECRET_TOKEN';
 
       beforeEach(() => {
@@ -221,7 +221,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
             return jsonOk({success: true});
           });
 
-          await ajax.generateRequest();;
+          await ajax.generateRequest();
 
           ajax.params = {b: 'b'};
           onRequest(request => {
@@ -320,7 +320,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
         describe('and `contentType` is explicitly set to form encode', () => {
           it('we encode a custom object', async () => {
-            function Foo(bar) { this.bar = bar };
+            function Foo(bar) { this.bar = bar }
             var requestObj = new Foo('baz');
             ajax.body = requestObj;
             ajax.contentType = 'application/x-www-form-urlencoded';
