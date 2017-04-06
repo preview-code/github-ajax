@@ -1,127 +1,806 @@
+<!doctype html>
 <!--
 @license
 Copyright (c) 2017 Preview-Code. All rights reserved.
 This code may only be used under the BSD style license found in LICENSE.txt
 -->
-<!doctype html>
 <html>
 <head>
-  <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
   <title>github-ajax tests</title>
 
   <script src="../../webcomponentsjs/webcomponents-lite.js"></script>
   <script src="../../web-component-tester/browser.js"></script>
+  <script src="fetch-test-helpers.js"></script>
 
+  <link rel="import" href="../../polymer/polymer.html">
   <link rel="import" href="../github-ajax.html">
-
 </head>
 <body>
-
-  <test-fixture id="basic">
+  <test-fixture id="TrivialGet">
     <template>
-      <github-ajax id="one" refurl="github.json"></github-ajax>
-      <github-ajax id="two"></github-ajax>
+      <github-ajax url="https://api.github.com" no-cache></github-ajax>
+    </template>
+  </test-fixture>
+  
+  <test-fixture id="TrivialPost">
+    <template>
+      <github-ajax method="POST"
+                   url="https://api.github.com" no-cache></github-ajax>
+    </template>
+  </test-fixture>
+  
+  <test-fixture id='BlankUrl'>
+    <template>
+      <github-ajax no-cache></github-ajax>
+    </template>
+  </test-fixture>
+
+  <test-fixture id="Timeout">
+    <template>
+      <github-ajax url="https://api.github.com"
+                 timeout="1" no-cache></iron-ajax>
+    </template>
+  </test-fixture>
+
+  <test-fixture id="RealPost">
+    <template>
+      <github-ajax method="POST" url="/httpbin/post" no-cache></github-ajax>
+    </template>
+  </test-fixture>
+
+  <test-fixture id="MultipleElements">
+    <template>
+      <github-ajax id="ajax" url="https://api.github.com" no-cache></github-ajax>
+      <github-ajax id="anotherAjax" url="github" no-cache></github-ajax>
+    </template>
+  </test-fixture>
+
+  <test-fixture id="Cache">
+    <template>
+      <github-ajax id="ajax" url="https://api.github.com"></github-ajax>
     </template>
   </test-fixture>
 
   <script>
+    'use strict';
+    describe('<github-ajax>', function () {
+      var ajax, anotherAjax;
+      var token = 'VERY_SECRET_TOKEN';
 
-    describe('<github-ajax>', function() {
-      var ajax, one, two, server;
-      var token = 'token';
-      var responseHeaders = {
-        'Content-Type': 'application/json',
-        'ETag': 'susdiwp36ljsdl'
-      };
-      var response = {
-        one: '{"success":true}',
-        two: '{"anotherSuccess: true"}'
-      };
-
-      function addEventListener(element, name, func) {
-        var inner = function(e) {
-          func(e);
-          element.removeEventListener(name, inner);
-        };
-        element.addEventListener(name, inner);
-      }
-
-      beforeEach(function() {
-        ajax = fixture('basic');
-        one = ajax[0];
-        two = ajax[1];
-
-        server = sinon.fakeServer.create();
-        server.respondWith(
-          'GET',
-          /github.json.*/, [
-            200,
-            responseHeaders,
-            response.one
-          ]
-        );
-        server.respondImmediately = true;
-        one.storeToken(token);
+      beforeEach(() => {
+        ajax = fixture('TrivialGet');
+        onRequest(wait);
+        ajax._onError = e => { throw e }
       });
 
-      it('token shared between instances', function() {
-        assert.equal(one.params.access_token, token);
-        assert.equal(two.params.access_token, token);
-        var el = document.createElement('github-ajax');
-        assert.equal(el.params.access_token, token);
-      });
+      afterEach(() => window.fetch.restore && window.fetch.restore());
 
-      it('receives response', function(done) {
-        addEventListener(one, 'response', function() {
-          assert.deepEqual(one.lastResponse, {
-            success: true
+      describe('on instantiation', () => {
+        it('does not automatically fetch', (done) => {
+          onRequest(() => {
+            done(new Error('Expected no request to be made'));
           });
-          done();
+          ajax = fixture('TrivialGet');
+          setTimeout(done, 100);
         });
-        one.generateRequest();
+      });
+      
+      describe('when making simple GET requests for JSON', () => {
+        it('has sane defaults that love you', async () => {
+          onRequest(async request => {
+            expect(request).to.be.ok;
+            expect(request).to.be.a('Request');
+            expect(request.method).to.equal('GET');
+            return jsonOk({success: true});
+          });
+          await ajax.generateRequest();
+        });
+
       });
 
-      describe('with ETag', function() {
-        var etag;
+      describe('when setting custom headers', () => {
+        it('are present in the request headers', async () => {
+          ajax.headers['custom-header'] = 'valid';
 
-        beforeEach(function() {
-          server.respondWith(
-            'GET',
-            /github.json.*/, function(xhr) {
-              etag = xhr.requestHeaders['if-none-match'];
-              xhr.respond(304, responseHeaders, response.two);
-            }
-          );
+          onRequest(request => {
+            expect(request.headers.has('custom-header')).to.be.true;
+            expect(request.headers.get('custom-header')).to.be.a('string');
+            expect(request.headers.get('custom-header')).to.equal('valid');
+            return jsonOk({success: true});
+          });
+
+          await ajax.generateRequest();
         });
 
-        it('resends correct ETag on new request', function() {
-          one.generateRequest();
-          assert.equal(etag, responseHeaders.ETag);
-        });
+        it('non-objects in headers are not applied', async () => {
+          ajax.headers = 'invalid';
 
-        it('corrects 304 to response from cache', function(done) {
-          addEventListener(one, 'response', function(e) {
-            var request = e.detail;
-            if (request.status !== 304) {
-              return;
-            }
-            assert.deepEqual(request.response, {
-              success: true
+          onRequest(request => {
+            expect(request.headers.entries().next()).to.deep.equal({
+              done: true,
+              value: undefined
             });
-            done();
+            return jsonOk({success: true});
           });
-          one.generateRequest();
+
+          await ajax.generateRequest();
+        });
+      });
+
+      describe('when url isn\'t set yet', () => {
+
+        it('requestUrl remains empty despite valid queryString', () => {
+          ajax = fixture('BlankUrl');
+          expect(ajax.url).to.be.equal(undefined);
+          expect(ajax.queryString).to.be.equal('');
+          expect(ajax.requestUrl).to.be.equal('');
+
+          ajax.params = {'a':'b', 'c':'d'};
+
+          expect(ajax.queryString).to.be.equal('a=b&c=d');
+          expect(ajax.requestUrl).to.be.equal('?a=b&c=d');
         });
 
-        it('new element fetches from headercache', function(done) {
-          var el = document.createElement('github-ajax');
-          el.refurl = 'github.json';
-          addEventListener(el, 'response', function() {
-            assert.equal(etag, responseHeaders.ETag);
+        it('generateRequest defaults to window.location.href if url is left empty', async () => {
+          ajax = fixture('BlankUrl');
+          expect(ajax.url).to.be.equal(undefined);
+
+          onRequest(request => {
+            expect(request.url).to.equal(window.location.href);
+            return jsonOk({success: true});
+          });
+
+          await ajax.generateRequest();
+        });
+
+        it('still adds query params if url is left empty', async () => {
+          ajax = fixture('BlankUrl');
+          expect(ajax.url).to.be.equal(undefined);
+
+          ajax.params = {'a':'b', 'c':'d'};
+          onRequest(request => {
+            expect(request.url).to.be.eql(window.location.href + '?a=b&c=d');
+            return jsonOk({success: true});
+          });
+
+          await ajax.generateRequest();
+        });
+      });
+
+      describe('when properties are changed', () => {
+        it('generates simple-request elements that reflect the change', async () => {
+          onRequest(request => {
+            expect(request.method).to.be.equal('GET');
+            return jsonOk({success: true});
+          });
+          await ajax.generateRequest();
+
+          ajax.method = 'POST';
+          onRequest(request => {
+            expect(request.method).to.be.equal('POST');
+            return jsonOk({success: true});
+          });
+          
+          ajax.generateRequest();
+        });
+      });
+
+      describe('when generating a request', () => {
+        it('correctly adds params to a URL that already has some', () => {
+          ajax.url += '?a=b';
+          ajax.params = {'c': 'd'};
+          expect(ajax.requestUrl).to.be.equal('https://api.github.com?a=b&c=d')
+        })
+
+        it('encodes params properly', () => {
+          ajax.params = {'a b,c': 'd e f'};
+          expect(ajax.queryString).to.be.equal('a%20b%2Cc=d%20e%20f');
+        });
+
+        it('encodes array params properly', () => {
+          ajax.params = {'a b': ['c','d e', 'f']};
+          expect(ajax.queryString).to.be.equal('a%20b=c&a%20b=d%20e&a%20b=f');
+        });
+
+        it('reflects the loading state in the `loading` property', async () => {
+          onGET(() => {
+            expect(ajax.loading).to.be.true;
+            return jsonOk({success: true});
+          });
+          await ajax.generateRequest();
+          expect(ajax.loading).to.be.false;
+        });
+      });
+
+      describe('when params are changed', () => {
+        it('generates a request that reflects the change', async () => {
+          ajax.params = {a: 'a'};
+          
+          onRequest(request => {
+            expect(request.url).to.be.equal('https://api.github.com/?a=a');
+            return jsonOk({success: true});
+          });
+
+          await ajax.generateRequest();;
+
+          ajax.params = {b: 'b'};
+          onRequest(request => {
+            expect(request.url).to.be.equal('https://api.github.com/?b=b');
+            return jsonOk({success: true});
+          });
+
+          await ajax.generateRequest();
+        });
+      });
+
+      describe('the last response', () => {
+        var request;
+        beforeEach(() => {
+          onRequest(() => jsonOk({success: true}));
+          request = ajax.generateRequest();
+        });
+
+        it('is accessible as a readonly property', async () => {
+          await request;
+          expect(ajax.lastResponse).to.deep.equal({success: true});
+        });
+
+
+        it('updates with each new response', async () => {
+          await request;
+          expect(ajax.lastResponse).to.deep.equal({success: true});
+
+          onRequest(() => jsonOk({anotherSuccess: true}));
+          await ajax.generateRequest();
+          expect(ajax.lastResponse).to.deep.equal({anotherSuccess: true});
+        });
+      });
+
+      describe('when making POST requests', () => {
+        beforeEach(() => {
+          ajax = fixture('TrivialPost');
+          onRequest(wait);
+          ajax._onError = e => { throw e }
+        });
+
+        it('POSTs the value of the `body` attribute', async () => {
+          var requestBody = {foo: 'bar'};
+
+          ajax.body = requestBody;
+
+          onPOST(async request => {
+            expect(request).to.be.ok;
+            var body = await request.json();
+            expect(body).to.deep.equal(requestBody);
+            return jsonOk({success: true});
+          });
+          await ajax.generateRequest();
+        });
+
+        it('if `contentType` is set to form encode, the body is encoded', async () => {
+          ajax.body = {foo: 'bar\nbip', 'biz bo': 'baz blar'};
+          ajax.contentType = 'application/x-www-form-urlencoded';
+          onPOST(async request => {
+            const body = await request.text();
+            expect(body).to.equal('foo=bar%0D%0Abip&biz+bo=baz+blar');
+            return jsonOk({success: true});
+          });
+          await ajax.generateRequest();
+        });
+
+        it('by default, the body is json encoded', async () => {
+          var requestObj = {foo: 'bar', baz: [1,2,3]}
+          ajax.body = requestObj;
+          ajax.contentType = 'application/json';
+
+          onPOST(async request => {
+            expect(request).to.be.ok;
+            const body = await request.json();
+            expect(body).to.deep.equal(requestObj);
+            return jsonOk({success: true});
+          });
+
+          await ajax.generateRequest();
+        });
+
+        it('if `contentType` is json, the body is json encoded', async () => {
+          var requestObj = {foo: 'bar', baz: [1,2,3]}
+          ajax.body = requestObj;
+          ajax.contentType = 'application/json';
+
+          onPOST(async request => {
+            expect(request).to.be.ok;
+            const body = await request.json();
+            expect(body).to.deep.equal(requestObj);
+            return jsonOk({success: true});
+          });
+
+          await ajax.generateRequest();
+        });
+
+        describe('and `contentType` is explicitly set to form encode', () => {
+          it('we encode a custom object', async () => {
+            function Foo(bar) { this.bar = bar };
+            var requestObj = new Foo('baz');
+            ajax.body = requestObj;
+            ajax.contentType = 'application/x-www-form-urlencoded';
+            
+            onPOST(async request => {
+              expect(request).to.be.ok;
+              const body = await request.text();
+              expect(body).to.equal('bar=baz');
+              return jsonOk({success: true});
+            });
+            
+            await ajax.generateRequest();
+          });
+        });
+
+        describe('and `contentType` isn\'t set', () => {
+          it('we don\'t try to encode an ArrayBuffer', async () => {
+            var requestObj = new ArrayBuffer()
+            ajax.body = requestObj;
+            
+            onPOST(async request => {
+              expect(request).to.be.ok;
+              // We give the browser the ArrayBuffer directly, without trying
+              // to encode it.
+              const body = await request.arrayBuffer();
+              expect(body).to.be.instanceof(ArrayBuffer);
+              expect(body).to.deep.equal(requestObj);
+              return jsonOk({success: true});
+            });
+            
+            await ajax.generateRequest();
+          });
+        })
+      });
+
+      describe('when a response handler is bound', () => {
+        var responseHandler;
+
+        beforeEach(() => {
+          responseHandler = sinon.spy();
+          ajax.addEventListener('github-response', responseHandler);
+
+          onRequest(() => jsonOk({success: true}));
+        });
+
+        it('calls the handler after every response', async () => {
+          await ajax.generateRequest();
+          await ajax.generateRequest();
+          expect(responseHandler.callCount).to.be.equal(2);
+        });
+      });
+
+      describe('when `handleAs` is not set', () => {
+        it('sends `application/json` as accept header', async () => {
+          onRequest(async request => {
+            expect(request.headers.get('accept')).to.equal('application/json');
+            return jsonOk({});
+          });
+
+          await ajax.generateRequest();
+        })
+      })
+
+      describe('when handleAs parameter is `text`', () => {
+        it('response type is string', async () => {
+          ajax.handleAs = 'text';
+
+          onRequest(async request => {
+            expect(request.headers.get('accept')).to.equal('text/plain');
+            return jsonOk({});
+          });
+
+          await ajax.generateRequest();
+          expect(typeof(ajax.lastResponse)).to.be.equal('string');
+        });
+      });
+
+      describe('when a request fails', () => {
+        const expectedError = {
+            message: 'Bad Gateway',
+            errorCode: 502
+          }
+
+        beforeEach(() => {
+          ajax = fixture('TrivialGet');
+          ajax._onResponse = () => { throw Error('Expected request tp error but got a response') }
+        });
+
+        it('fires `github-error` on HTTP errors', done => {
+          ajax.addEventListener('github-error', function(event) {
+            expect(event.detail).to.be.ok;
+            expect(event.detail.message).to.equal(expectedError.message);
+            expect(event.detail.errorCode).to.equal(expectedError.errorCode);
+            expect(ajax.lastError.response).to.be.ok;
             done();
           });
-          el.generateRequest();
+
+          onRequest(() => serverError(expectedError.errorCode, expectedError.message));
+          ajax.generateRequest();
         });
+
+        it('reflects HTTP errors to all relevant properties', async () => {
+
+          onRequest(() => serverError(expectedError.errorCode, expectedError.message));
+          await ajax.generateRequest();
+
+          expect(ajax.loading).to.be.false;
+          expect(ajax.lastError).to.not.be.null;
+          expect(ajax.lastError.message).to.equal(expectedError.message);
+          expect(ajax.lastError.errorCode).to.equal(expectedError.errorCode);
+          expect(ajax.lastError.response).to.be.ok;
+        });
+
+        it('fires `github-error` on network errors', done => {
+          ajax.url = 'https://nonexistant.example.com/';
+          window.fetch.restore();
+
+          ajax.addEventListener('github-error', function(event) {
+            expect(event.detail).to.be.instanceof(TypeError);
+            done();
+          });
+          ajax.generateRequest();
+        })
+
+        it('reflects network errors to all relevant properties', async () => {
+          ajax.url = 'https://nonexistant.example.com/';
+          window.fetch.restore();
+
+          await ajax.generateRequest();
+          expect(ajax.lastResponse).to.be.null;
+          expect(ajax.lastError).to.not.be.null;
+          expect(ajax.lastError).to.be.instanceof(TypeError);
+        });
+      });
+
+
+      describe('when making a POST over the wire', () => {
+        beforeEach(() => {
+          window.fetch.restore();
+          ajax = fixture('RealPost');
+        })
+
+        // This fails on firefox 52 for some reason.
+        // Issue is described at: 
+        //    https://github.com/webcomponents/webcomponentsjs/issues/752
+        it.skip('FormData is handled correctly', async () => {
+          const requestBody = new FormData();
+          requestBody.append('a', 'foo');
+          requestBody.append('b', 'bar');
+
+          ajax.body = requestBody;
+          await ajax.generateRequest();
+          
+          // httpbin echoes the request back as response body
+          const sentRequest = ajax.lastResponse; 
+          expect(sentRequest.headers['Content-Type']).to.match(
+              /^multipart\/form-data; boundary=.*$/);
+
+          expect(sentRequest.form.a).to.be.equal('foo');
+          expect(sentRequest.form.b).to.be.equal('bar');
+        });
+
+        it('json is handled correctly', async () => {
+          ajax.body = JSON.stringify({a: 'foo', b: 'bar'});
+          ajax.contentType = 'application/json';
+          await ajax.generateRequest();
+          expect(ajax.lastResponse.headers['Content-Type']).to.match(
+              /^application\/json(;.*)?$/);
+          expect(ajax.lastResponse.json.a).to.be.equal('foo');
+          expect(ajax.lastResponse.json.b).to.be.equal('bar');
+        });
+
+        it('urlencoded data is handled correctly', async () => {
+          ajax.body = 'a=foo&b=bar';
+          await ajax.generateRequest()
+          expect(ajax.lastResponse.headers['Content-Type']).to.match(
+              /^application\/x-www-form-urlencoded(;.*)?$/);
+
+          expect(ajax.lastResponse.form.a).to.be.equal('foo');
+          expect(ajax.lastResponse.form.b).to.be.equal('bar');
+        });
+      });
+
+      describe('when setting timeout', () => {
+        var respond;
+
+        beforeEach(() => {
+          ajax = fixture('Timeout');
+          respond = onRequest(wait);
+        });
+        
+        it('fires `github-error` on timeout', done => {
+          ajax.addEventListener('github-error', e => {
+            expect(e.detail.timeout).to.be.true;
+            done();
+          });
+
+          ajax.generateRequest();
+        });
+
+        it('it fails once that timeout is reached', async () => {
+          await ajax.generateRequest();
+          expect(ajax.loading).to.be.false;
+          expect(ajax.lastResponse).to.be.null;
+          expect(ajax.lastError).to.deep.equal({
+            timeout: true,
+            message: 'The request timed out'
+          });
+        });
+
+        it('ignores a response after the corresponding request timed out', async () => {
+          await ajax.generateRequest();
+          respond(jsonOk({}));
+          expect(ajax.loading).to.be.false;
+          expect(ajax.lastResponse).to.be.null;
+          expect(ajax.lastError).to.deep.equal({
+            timeout: true,
+            message: 'The request timed out'
+          });
+        });
+      });
+
+      describe('GitHub specific properties', () => {
+        var anotherAjax;
+        
+        beforeEach(() => {
+          ajax = fixture('MultipleElements')[0];
+          anotherAjax = fixture('MultipleElements')[1];
+          ajax._onError = e => { throw e; }
+          anotherAjax._onError = e => { throw e; }
+        });
+
+        it('does not add `access_token` to request headers if `accessToken` is not present', async () => {
+          onRequest((request) => {
+            expect(getRequestParam(request.url, 'access_token')).to.be.undefined;
+            return jsonOk({});
+          });
+          await ajax.generateRequest();
+        });
+
+        it('adds `access_token` to request headers if `accessToken` is present', async () => {
+          onRequest(request => {
+            expect(getRequestParam(request.url, 'access_token')).to.equal(token);
+            return jsonOk({hello: 'world'})
+          });
+          
+          ajax.accessToken = token;
+          await ajax.generateRequest();
+        });
+
+        it('does not add `per_page` to request headers if `perPage` is not present', async () => {
+          onRequest((request) => {
+            expect(getRequestParam(request.url, 'per_page')).to.be.undefined;
+            return jsonOk({});
+          });
+          await ajax.generateRequest();
+        });
+
+        it('adds `per_page` to request headers if `perPage` is present', async () => {
+          onRequest(request => {
+            expect(getRequestParam(request.url, 'per_page')).to.equal('42');
+            return jsonOk({hello: 'world'})
+          });
+          
+          ajax.perPage = 42;
+          await ajax.generateRequest();
+        });
+
+        it('does not add `page` to request headers if `page` property is not present', async () => {
+          onRequest((request) => {
+            expect(getRequestParam(request.url, 'page')).to.be.undefined;
+            return jsonOk({});
+          });
+          await ajax.generateRequest();
+        });
+
+        it('adds `page` to request headers if `page` property is present', async () => {
+          onRequest(request => {
+            expect(getRequestParam(request.url, 'page')).to.equal('42');
+            return jsonOk({hello: 'world'})
+          });
+          
+          ajax.page = 42;
+          await ajax.generateRequest();
+        });
+
+        it('access token is shared between instances', done => {
+          ajax.accessToken = token;
+          expect(ajax.params.access_token).to.equal(token);
+          
+          expect(anotherAjax.accessToken).to.equal(token);
+          expect(anotherAjax.params.access_token).to.equal(token);
+
+          var el = document.createElement('github-ajax');
+          document.body.appendChild(el);
+          setTimeout(() => {
+            expect(el.accessToken).to.equal(token);
+            expect(el.params.access_token).to.equal(token);
+            done();
+          }, 100);
+        });
+      });
+
+      describe('with cache enabled', () => {
+        const etag = 'SOME_ETAG';
+        const newETag = 'SOME_ETAG_v2'
+        const responseHeaders = {
+            notModified: {
+              'ETag': etag
+            },
+            jsonWithEtag: {
+              'Content-Type': 'application/json',
+              'ETag': etag
+            },
+            jsonWithNewEtag: {
+              'Content-Type': 'application/json',
+              'ETag': newETag
+            }
+          };
+
+        const responses = [
+            '{"success":true}',
+            '{"anotherSuccess: true"}'
+          ];
+
+        beforeEach(() => {
+          ajax = fixture('Cache');
+          ajax._onError = e => { throw e; }
+          caches.delete('github-cache-v1');
+        });
+
+        it('sends no ETag when cache is empty', async () => {
+          onRequest(request => {
+            expect(request.headers.has('If-None-Match')).to.be.false;
+            return jsonOk({});
+          });
+          await ajax.generateRequest();
+        });
+
+        it('opens a cache with the correct name', async () => {
+          onRequest(() => respondWith(200, responseHeaders.jsonWithEtag, responses[0]));
+          await ajax.generateRequest();
+          const hasCreatedCache = await caches.has(ajax._cacheName);
+          expect(hasCreatedCache).to.be.true;
+        });
+
+        it('caches responses with 200 status codes', async () => {
+          var receivedRequest;
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(200, responseHeaders.jsonWithEtag, responses[0])
+          });
+
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
+
+          expect(await cachedResponse.json()).to.equal(responses[0]);
+          expect(cachedResponse.headers.get('ETag')).to.equal(etag);
+        });
+
+        it('does not cache 304', async () => {
+          var receivedRequest;
+          
+          onRequest(() => respondWith(200, responseHeaders.jsonWithEtag, responses[0]));
+          await ajax.generateRequest();
+
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(304, responseHeaders.jsonWithEtag)
+          });
+
+          ajax._cacheResponse = () => { throw Error('Expected this response to not be cached') };
+          await ajax.generateRequest();
+        });
+
+        it('does not cache 404', async () => {
+          var receivedRequest;
+          ajax._onError = () => {};
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(404, responseHeaders.jsonWithEtag)
+          });
+
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
+
+          expect(cachedResponse).to.be.undefined;
+        });
+
+        it('does not cache 500', async () => {
+          var receivedRequest;
+          ajax._onError = () => {};
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(500, responseHeaders.jsonWithEtag);
+          });
+
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
+
+          expect(cachedResponse).to.be.undefined;
+        });
+
+        it('does not cache POST responses', async () => {
+          var receivedRequest;
+          ajax.method = 'POST';
+          onRequest(r => {
+            receivedRequest = r;
+            return respondWith(200, responseHeaders.jsonWithEtag, responses[0]);
+          });
+
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
+
+          expect(cachedResponse).to.be.undefined;
+        });
+
+        it('retrieves the response from cache on a 304', async () => {
+          onRequest(request => respondWith(200, responseHeaders.jsonWithEtag, responses[0]));
+          await ajax.generateRequest();
+          const firstResponse = ajax.lastResponse;
+          onRequest(request => respondWith(304, responseHeaders.jsonWithEtag));
+          await ajax.generateRequest();
+          expect(ajax.lastResponse).to.deep.equal(firstResponse);
+        });
+
+        it('fails to retrieve a response from cache when ETag is unknown', done => {
+          ajax = fixture('Cache');
+          caches.delete('github-cache-v1');
+
+          onRequest(() => respondWith(304, responseHeaders.jsonWithEtag));
+          
+          ajax.addEventListener('github-error', e => { 
+            expect(e.detail.message).to.equal('Received a 304, but found no matching response in cache!');
+            done();
+          });
+
+          ajax.addEventListener('github-response', () => { 
+            throw Error('Expected no response because cache is empty') 
+          });
+          ajax.generateRequest();
+        });
+
+        it('resends correct ETag on new request',async () => {
+          onRequest(request => {
+            expect(request.headers.has('If-None-Match')).to.be.false;
+            return respondWith(200, responseHeaders.jsonWithEtag, responses[0])
+          });
+          await ajax.generateRequest();
+
+          onRequest(request => {
+            expect(request.headers.get('If-None-Match')).to.equal(etag);
+            return respondWith(200, responseHeaders.jsonWithEtag, responses[0])
+          });
+          await ajax.generateRequest();
+        });
+
+        it('updates the cache when content has changed', async () => {
+          var receivedRequest;
+
+          onRequest(() => respondWith(200, responseHeaders.jsonWithEtag, responses[0]));
+          await ajax.generateRequest();
+
+          onRequest(request => {
+            receivedRequest = request;
+            expect(request.headers.get('If-None-Match')).to.equal(etag);
+            return respondWith(200, responseHeaders.jsonWithNewEtag, responses[1])
+          });
+          await ajax.generateRequest();
+          const cache = await caches.open(ajax._cacheName);
+          const cachedResponse = await cache.match(receivedRequest);
+
+          expect(await cachedResponse.json()).to.equal(responses[1]);
+          expect(cachedResponse.headers.get('ETag')).to.equal(newETag);
+        });
+        
       });
     });
   </script>

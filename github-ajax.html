@@ -4,125 +4,420 @@ Copyright (c) 2017 Preview-Code. All rights reserved.
 This code may only be used under the BSD style license found in LICENSE.txt
 -->
 <link rel="import" href="../polymer/polymer.html">
-<link rel="import" href="../iron-ajax/iron-ajax.html">
-<link rel="import" href="iron-ajax-properties.html">
 
 <!--
-Wrapper around iron-ajax to enable caching of ETags and proper handling
-of params with oAuth tokens.
+@demo demo/index.html
 -->
 <dom-module id="github-ajax">
   <template>
-    <iron-ajax
-      id="ajax"
-      url="[[refurl]]"
-      params="[[params]]"
-      method="[[method]]"
-      headers="[[headers]]"
-      body="[[body]]"
-      sync="[[sync]]"
-      handle-as="[[handleAs]]"
-      with-credentials="[[withCredentials]]"
-      timeout="[[timeout]]"
-      verbose="[[verbose]]"
-      last-request="{{last-request}}"
-      loading="{{iron-loading}}"
-      last-error="{{last-error}}"
-      activeRequests="{{active-requests}}"
-      debounce-duration="[[debounceDuration]]"
-      json-prefix="[[jsonPrefix]]"
-      bubbles="[[bubbles]]"
-      on-request="_onRequest"
-      on-response="_onResponse"
-      on-error="_onError"></iron-ajax>
   </template>
   <script>
-  /*global IronAjaxProperties*/
-  var shared = {
-    responseCache: {},
-    headerCache: {}
-  };
-
   (function() {
+    var sharedToken;
+    var instances = [];
+
     Polymer({
       is: 'github-ajax',
-      behaviors: [IronAjaxProperties],
       properties: {
-        /**
-         * Parameters decorated with the oAuth token and the perPage property
-         * @type {Object}
-         */
-        params: {
-          type: Object,
-          computed: '_generateParams(shared, perPage, page)',
-          observer: '_maybeFire'
-        },
         /**
          * How many results must be retrieved from GitHub, default 10.
          * @type {Number}
          */
         perPage: {
           type: Number,
-          value: 10
+          observer: '_onPerPageChange'
         },
+
         /**
          * The nth page from GitHub, used to travers through pagination.
          * @type {Number}
          */
         page: {
           type: Number,
-          value: 1
-        }
-      },
-      observers: [
-        '_updateIfNoneMatch(refurl, page)'
-      ],
-      _generateParams: function(shared, perPage, page) {
-        var accessToken = shared.accessToken;
-        if (!accessToken) {
-          return undefined;
-        }
-        return {
-          access_token: accessToken,
-          per_page: perPage,
-          page: page
-        };
-      },
-      _updateIfNoneMatch: function(refurl, page) {
-        var etag = shared.headerCache[refurl + 'page' + page];
-        if (etag) {
-          this._setHeader('If-None-Match', etag);
-        }
-      },
-      _onResponse: function(e) {
-        shared.headerCache[this.refurl + 'page' + this.page] = e.detail.xhr.getResponseHeader('ETag');
-        shared.responseCache[this.refurl + 'page' + this.page] = e.detail.response;
+          observer: '_onPageChange'
+        },
+
+        /**
+         * OAuth access token for authenticated requests, e.g.: fetching the current user.
+         * @type {String}
+         */
+        accessToken: {
+          type: String,
+          observer: '_onTokenChange'
+        },
+
+        /**
+         * Amount of milliseconds before the request is considered to be timed out.
+         * A timeout triggers the `github-error` event and sets the appropriate lastError and lastRequest property.
+         * 
+         * Note that the timeout property cannot cancel the actual in-flight request,
+         * since the Fetch API does not yet have support for interrupting requests.
+         * 
+         * @type {Number}
+         */
+        timeout: {
+          type: Number,
+          value: null
+        },
+
+        /**
+         * Set this property to true to completely disable caching of GitHub responses.
+         * Mainly used for testing.
+         */
+        noCache: {
+          type: Boolean,
+          value: false
+        },
+
+        url: String,
+
+        params: {
+          type: Object,
+          value: function() { return {} }
+        },
+
+        method: {
+          type: String,
+          value: 'GET'
+        },
+
+        headers: {
+          type: Object,
+          value: function() { return {} }
+        },
+
+        contentType: {
+          type: String,
+          value: null
+        },
+
+        body: {
+          type: Object,
+          value: null
+        },
+
+        handleAs: {
+          type: String,
+          value: 'json'
+        },
+
+        lastRequest: {
+          type: Object,
+          notify: true,
+          readOnly: true
+        },
+
+        loading: {
+          type: Boolean,
+          notify: true,
+          readOnly: true,
+        },
+
+        lastResponse: {
+          type: Object,
+          notify: true,
+          readOnly: true
+        },
+
+        lastError: {
+          type: Object,
+          notify: true,
+          readOnly: true
+        },
         
-        this._setLastResponse(shared.responseCache[this.refurl + 'page' + this.page]);
-        e.stopPropagation();
-        this.fire('response', Object.create(e.detail), {
-          bubbles: this.bubbles
+        _cacheName: {
+          type: String,
+          value: 'github-cache-v1'
+        }
+      },
+      
+
+      attached: function() {
+        if (sharedToken) this.accessToken = sharedToken;
+        instances.push(this);
+      },
+
+      detached: function() {
+        instances.splice(instances.indexOf(this), 1);
+      },
+
+      _onPerPageChange: function(itemCount) {
+        if (this.params) this.params['per_page'] = itemCount;
+      },
+
+      _onPageChange: function(newPage) {
+        if (this.params) this.params['page'] = newPage
+      },
+
+      _onTokenChange: function(newToken) {
+        if (newToken !== sharedToken) {
+          sharedToken = newToken;
+          instances.forEach(function(instance) {
+            instance.accessToken = sharedToken;
+          });
+        }
+        if (this.params) this.params['access_token'] = newToken;
+      },
+
+      /**
+       * The query string that should be appended to the `url`, serialized from
+       * the current value of `params`.
+       *
+       * @return {string}
+       */
+      get queryString () {
+        const queryParts = [];
+        var param;
+        var value;
+
+        for (param in this.params) {
+          value = this.params[param];
+          param = window.encodeURIComponent(param);
+
+          if (Array.isArray(value)) {
+            for (var i = 0; i < value.length; i++) {
+              queryParts.push(param + '=' + window.encodeURIComponent(value[i]));
+            }
+          } else if (value !== null) {
+            queryParts.push(param + '=' + window.encodeURIComponent(value));
+          } else {
+            queryParts.push(param);
+          }
+        }
+
+        return queryParts.join('&');
+      },
+
+      /**
+       * The `url` with query string (if `params` are specified).
+       *
+       * @return {string}
+       */
+      get requestUrl() {
+        const queryString = this.queryString;
+        const url = this.url || '';
+
+        if (queryString) {
+          const bindingChar = url.indexOf('?') >= 0 ? '&' : '?';
+          return url + bindingChar + queryString;
+        }
+
+        return url;
+      },
+
+      /**
+       * An object that maps header names to header values, first applying the
+       * the value of `Content-Type` and then overlaying the headers specified
+       * in the `headers` property.
+       *
+       * @return {Object}
+       */
+      get requestHeaders() {
+        const headers = new Headers();
+        var contentType = this.contentType;
+        if (contentType == null && (typeof this.body === 'string')) {
+          contentType = 'application/x-www-form-urlencoded';
+        }
+        if (contentType) {
+          headers.append('content-type', contentType);
+        }
+
+        var acceptType = {
+          'json': 'application/json',
+          'text': 'text/plain',
+          'html': 'text/html',
+          'arraybuffer': 'application/octet-stream'
+        }[this.handleAs];
+
+        var header;
+
+        if (this.headers instanceof Object) {
+          for (header in this.headers) {
+            headers.append(header, this.headers[header].toString());
+          }
+
+          if (acceptType && !headers.has('accept')) {
+            headers.append('accept', acceptType);
+          }
+        }
+        return headers;
+      },
+
+      /**
+       * @param {Object} object The object to encode as x-www-form-urlencoded.
+       * @return {string} .
+       */
+      _wwwFormUrlEncode: function(object) {
+        if (!object) {
+          return '';
+        }
+        var pieces = [];
+        Object.keys(object).forEach(function(key) {
+          pieces.push(
+              this._wwwFormUrlEncodePiece(key) + '=' +
+              this._wwwFormUrlEncodePiece(object[key]));
+        }, this);
+        return pieces.join('&');
+      },
+
+      /**
+       * @param {*} str A key or value to encode as x-www-form-urlencoded.
+       * @return {string} .
+       */
+      _wwwFormUrlEncodePiece: function(str) {
+        // Spec says to normalize newlines to \r\n and replace %20 spaces with +.
+        // jQuery does this as well, so this is likely to be widely compatible.
+        if (str === null) {
+          return '';
+        }
+        return encodeURIComponent(str.toString().replace(/\r?\n/g, '\r\n'))
+            .replace(/%20/g, '+');
+      },
+
+      _encodeBody: function(headers) {
+        if (!this.body) {
+          return;
+        } else if (headers.has('content-type') &&
+                   headers.get('content-type') === 'application/x-www-form-urlencoded' &&
+                   typeof this.body === 'object') {
+          return this._wwwFormUrlEncode(this.body);
+        } else if (this.body instanceof FormData
+                || this.body instanceof ArrayBuffer
+                || typeof this.body === 'string') {
+          return this.body;
+        } else {
+          return JSON.stringify(this.body)
+        }
+      },
+
+      generateRequest: function() {
+        return this._checkCacheForOldResponse(this.requestHeaders)
+          .then(this._fetchOrTimeout.bind(this))
+          .then(this._handle304.bind(this))
+          .then(this._decodeResponseBody.bind(this))
+          .then(this._onResponse.bind(this))
+          .catch(this._onError.bind(this));
+      },
+
+      _checkCacheForOldResponse: function(headers) {
+        const request = this._constructRequest(headers)
+        if (this._shouldUseCache(request)) {
+          return caches.open(this._cacheName)
+          .then(cache => cache.match(request))
+          .then(cachedResponse => {
+            if (cachedResponse && cachedResponse.headers.has('ETag')) {
+              const etag = cachedResponse.headers.get('ETag');
+              headers.append('If-None-Match', etag);
+            }
+            return Promise.resolve({
+              cachedResponse: cachedResponse,
+              request: this._constructRequest(headers)
+            });
+          });
+        } else {
+          return Promise.resolve({request: request});
+        }
+      },
+
+      _fetchOrTimeout: function(o) {
+        this._setLastRequest(o.request);
+        this._setLoading(true);
+        this.fire('github-request', o.request);
+        
+        return Promise.race([this._timeout(), fetch(o.request).then(response => {
+          o.response = response;
+          return o;
+        })]);
+      },
+
+      _timeout: function() {
+        return new Promise((resolve, reject) => {
+          if (this.timeout) {
+            setTimeout(() => reject({timeout: true, message: 'The request timed out'})
+            , this.timeout);
+          }
         });
       },
-      _onError: function(e) {
-        shared.headerCache[this.refurl] = e.detail.request.xhr.getResponseHeader('ETag');
-        // Cache responses to save the rate limit of the GitHub api
-        if (e.detail.request.status === 304) {
-          this._retrievePreviousRequestFromCache();
+
+      _handle304: function(o) {
+        if (this.lastRequest === o.request) {
+          if (o.response.status === 304) {
+            if (!o.cachedResponse) throw Error('Received a 304, but found no matching response in cache!');
+            return o.cachedResponse;
+          } else {
+            return this._checkResponseForErrors(o.request, o.response)
+              .then(this._cacheResponse(o.request).bind(this))
+          }
+        }
+      },
+
+      _checkResponseForErrors: function(request, response) {
+        if (response.status === 200) {
+          return Promise.resolve(response);
         } else {
-          this.fire('error', e.detail, {
-            bubbles: this.bubbles
+          return Promise.reject({
+            message: response.statusText,
+            errorCode: response.status,
+            response: response
           });
         }
       },
-      _retrievePreviousRequestFromCache: function() {
-        this._setLastResponse(shared.responseCache[this.refurl + 'page' + this.page]);
-        // Inject our last response
-        this.lastRequest._setResponse(this.lastResponse);
-        this.fire('response', Object.create(this.lastRequest), {
-          bubbles: this.bubbles
-        });
+
+      _cacheResponse: function(request) { return function(response) {
+        if (!this._shouldUseCache(response)) {
+          return Promise.resolve(response);
+        } else {
+          var responseClone = response.clone();
+          return caches.open(this._cacheName)
+            .then(cache => cache.put(request, response))
+            .then(() => Promise.resolve(responseClone));
+        }
+      }},
+
+      _decodeResponseBody: function(response) {
+        if (!response) return;
+        if (this.handleAs === 'json') {
+          return response.json();
+        } else if (this.handleAs === 'text') {
+          return response.text();
+        } else if (this.handleAs === 'arrayBuffer') {
+          return response.arrayBuffer();
+        }
+        throw new Error('Unrecognized `handleAs` property: ' + this.handleAs);
+      },
+
+      _constructRequest: function(headers) {
+        return new Request(this.requestUrl, {
+            method: this.method,
+            headers: headers,
+            body: this._encodeBody(headers)
+          });
+      },
+
+      _shouldUseCache: function(r) {
+
+        if (r instanceof Request) {
+          return !this.noCache && this.method === 'GET';
+        } else if (r instanceof Response) {
+          return !this.noCache && this.method === 'GET' && r.status === 200;
+        }
+      },
+
+      _onResponse: function(responseBody) {
+        if (!responseBody) return;
+        this._setLoading(false);
+        this._setLastError(null);
+        this._setLastResponse(responseBody);
+        this.fire('github-response', responseBody);
+      },
+
+      _onError: function(err) {
+        this._setLoading(false);
+        this._setLastResponse(null);
+        this._setLastError(err);
+        this.fire('github-error', err);
       }
+
     });
   })();
   </script>

@@ -1,10 +1,9 @@
 {
   "name": "github-ajax",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "main": "github-ajax.html",
   "description": "iron-ajax wrapper specialised to the GitHub API",
   "authors": [
-    "Tim van der Lippe",
     "Preview-Code team"
   ],
   "repository": {
@@ -20,8 +19,9 @@
   "devDependencies": {
     "iron-component-page": "PolymerElements/iron-component-page#^1.0.0",
     "iron-demo-helpers": "PolymerElements/iron-demo-helpers#^1.0.0",
-    "web-component-tester": "^5.0.0",
-    "webcomponentsjs": "webcomponents/webcomponentsjs#^0.7.0"
+    "web-component-tester": "^5.0.1",
+    "webcomponentsjs": "^0.7.24",
+    "paper-button": "^1.0.14"
   },
   "ignore": [
     "**/.*",
