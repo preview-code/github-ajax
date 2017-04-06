@@ -19,6 +19,37 @@ This code may only be used under the BSD style license found in LICENSE.txt
     Polymer({
       is: 'github-ajax',
       properties: {
+        
+        /**
+         * Reflects whether every page of results has been loaded.
+         * If false, call `fetchMore()` to load the next page of results.
+         *
+         * The accumulated results are stored in `allResults`. 
+         * `lastResponse` will only contain the data received from the last requested page.
+         *
+         * The amount of results loaded depends on the `perPage` property,
+         * as well as on whether GitHub decides to honor the value you set in `perPage`.
+         * @type {Boolean}
+         */
+        canFetchMore: {
+          type: Boolean,
+          readOnly: true,
+          notify: true
+        },
+
+        /**
+         * Stores accumulated results from all fetched pages.
+         * If the endpoint you query only returns one result, this array wil contain simply that result.
+         * 
+         * Calling `generateRequest()` will reset this array.
+         * @type {Array}
+         */
+        allResults: {
+          type: Array,
+          readOnly: true,
+          notify: true,
+          value: () => []
+        },
 
         /**
          * How many results must be retrieved from GitHub, default 10.
@@ -379,6 +410,14 @@ This code may only be used under the BSD style license found in LICENSE.txt
         }
       },
 
+      /**
+       * Performs an AJAX request to the specified URL.
+       * This will reset the results stored in `allResults`.
+       * If the queried endpoint supports pagination, the first page will be loaded.
+       * 
+       * Returns a Promise that resolves when the request completes and after any events have been fired.
+       * @return {Promise}
+       */
       generateRequest: function() {
         if (sharedToken && this.accessToken !== sharedToken) {
           this.accessToken = sharedToken;
