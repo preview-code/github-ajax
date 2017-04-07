@@ -1,6 +1,6 @@
 {
   "name": "github-ajax",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "main": "github-ajax.html",
   "description": "iron-ajax wrapper specialised to the GitHub API",
   "authors": [
