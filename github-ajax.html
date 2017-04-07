@@ -291,43 +291,34 @@ This code may only be used under the BSD style license found in LICENSE.txt
       },
 
       generateRequest: function() {
-        return this._checkCacheForOldResponse(this.requestHeaders)
-          .then(this._fetchOrTimeout.bind(this))
-          .then(this._handle304.bind(this))
+        if (sharedToken && this.accessToken !== sharedToken) {
+          this.accessToken = sharedToken;
+        }
+
+        const headers = this.requestHeaders;
+        const request = new Request(this.requestUrl, {
+            method: this.method,
+            headers: headers,
+            body: this._encodeBody(headers)
+          });
+        
+        return this._fetchOrTimeout(request)
+          .then(this._checkResponseForErrors.bind(this))
           .then(this._decodeResponseBody.bind(this))
           .then(this._onResponse.bind(this))
           .catch(this._onError.bind(this));
       },
 
-      _checkCacheForOldResponse: function(headers) {
-        const request = this._constructRequest(headers)
-        if (this._shouldUseCache(request)) {
-          return caches.open(this._cacheName)
-          .then(cache => cache.match(request))
-          .then(cachedResponse => {
-            if (cachedResponse && cachedResponse.headers.has('ETag')) {
-              const etag = cachedResponse.headers.get('ETag');
-              headers.append('If-None-Match', etag);
-            }
-            return Promise.resolve({
-              cachedResponse: cachedResponse,
-              request: this._constructRequest(headers)
-            });
-          });
-        } else {
-          return Promise.resolve({request: request});
-        }
-      },
-
-      _fetchOrTimeout: function(o) {
-        this._setLastRequest(o.request);
+      
+      _fetchOrTimeout: function(request) {
+        this._setLastRequest(request);
         this._setLoading(true);
-        this.fire('github-request', o.request);
+        this.fire('github-request', request);
         
-        return Promise.race([this._timeout(), fetch(o.request).then(response => {
-          o.response = response;
-          return o;
-        })]);
+        return Promise.race([this._timeout(), fetch(request).then(response => ({
+          request: request,
+          response: response
+        }))]);
       },
 
       _timeout: function() {
@@ -339,40 +330,19 @@ This code may only be used under the BSD style license found in LICENSE.txt
         });
       },
 
-      _handle304: function(o) {
+      _checkResponseForErrors: function(o) {
         if (this.lastRequest === o.request) {
-          if (o.response.status === 304) {
-            if (!o.cachedResponse) throw Error('Received a 304, but found no matching response in cache!');
-            return o.cachedResponse;
+          if (o.response.status === 200) {
+            return Promise.resolve(o.response);
           } else {
-            return this._checkResponseForErrors(o.request, o.response)
-              .then(this._cacheResponse(o.request).bind(this))
+            return Promise.reject({
+              message: o.response.statusText,
+              errorCode: o.response.status,
+              response: o.response
+            });
           }
         }
       },
-
-      _checkResponseForErrors: function(request, response) {
-        if (response.status === 200) {
-          return Promise.resolve(response);
-        } else {
-          return Promise.reject({
-            message: response.statusText,
-            errorCode: response.status,
-            response: response
-          });
-        }
-      },
-
-      _cacheResponse: function(request) { return function(response) {
-        if (!this._shouldUseCache(response)) {
-          return Promise.resolve(response);
-        } else {
-          var responseClone = response.clone();
-          return caches.open(this._cacheName)
-            .then(cache => cache.put(request, response))
-            .then(() => Promise.resolve(responseClone));
-        }
-      }},
 
       _decodeResponseBody: function(response) {
         if (!response) return;
@@ -384,23 +354,6 @@ This code may only be used under the BSD style license found in LICENSE.txt
           return response.arrayBuffer();
         }
         throw new Error('Unrecognized `handleAs` property: ' + this.handleAs);
-      },
-
-      _constructRequest: function(headers) {
-        return new Request(this.requestUrl, {
-            method: this.method,
-            headers: headers,
-            body: this._encodeBody(headers)
-          });
-      },
-
-      _shouldUseCache: function(r) {
-
-        if (r instanceof Request) {
-          return !this.noCache && this.method === 'GET';
-        } else if (r instanceof Response) {
-          return !this.noCache && this.method === 'GET' && r.status === 200;
-        }
       },
 
       _onResponse: function(responseBody) {
