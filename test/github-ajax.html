@@ -61,6 +61,12 @@ This code may only be used under the BSD style license found in LICENSE.txt
     </template>
   </test-fixture>
 
+  <test-fixture id="Pagination">
+    <template>
+      <github-ajax id="ajax" no-cache url="https://api.github.com"></github-ajax>
+    </template>
+  </test-fixture>
+
   <script>
     'use strict';
     describe('<github-ajax>', function () {
@@ -456,7 +462,6 @@ This code may only be used under the BSD style license found in LICENSE.txt
         });
       });
 
-
       describe('when making a POST over the wire', () => {
         beforeEach(() => {
           window.fetch.restore();
@@ -589,24 +594,6 @@ This code may only be used under the BSD style license found in LICENSE.txt
           await ajax.generateRequest();
         });
 
-        it('does not add `page` to request headers if `page` property is not present', async () => {
-          onRequest((request) => {
-            expect(getRequestParam(request.url, 'page')).to.be.undefined;
-            return jsonOk({});
-          });
-          await ajax.generateRequest();
-        });
-
-        it('adds `page` to request headers if `page` property is present', async () => {
-          onRequest(request => {
-            expect(getRequestParam(request.url, 'page')).to.equal('42');
-            return jsonOk({hello: 'world'})
-          });
-          
-          ajax.page = 42;
-          await ajax.generateRequest();
-        });
-
         it('access token is shared between instances', done => {
           ajax.accessToken = token;
           expect(ajax.params.access_token).to.equal(token);
@@ -621,6 +608,188 @@ This code may only be used under the BSD style license found in LICENSE.txt
             expect(el.params.access_token).to.equal(token);
             done();
           }, 100);
+        });
+      });
+
+      describe('Handles pagination', () => {
+        const pages = [
+          // First page
+          '<https://api.github.com/x?page=2>; rel="next", <https://api.github.com/x?page=3>; rel="last"',
+          // Second page
+          '<https://api.github.com/x?page=3>; rel="next", <https://api.github.com/x?page=3>; rel="last", <https://api.github.com/x?page=1>; rel="first", <https://api.github.com/x?page=1>; rel="prev"',
+          // Last page
+          '<https://api.github.com/x?page=1>; rel="first", <https://api.github.com/x?page=2>; rel="prev"'
+        ]
+        const firstPageHeaders = { 'Link': pages[0] };
+        const secondPageHeaders = { 'Link': pages[1] };
+        const lastPageHeaders = { 'Link': pages[2] };
+
+        beforeEach(() => {
+          ajax = fixture('Pagination');
+          onRequest(wait);
+          ajax._onError = e => { throw e }
+        })
+
+        it('does not add `page` to request headers on `generateRequest`', done => {
+          onRequest(request => {
+            expect(getRequestParam(request.url, 'page')).to.be.undefined;
+            done();
+          });
+          ajax.generateRequest();
+        });
+
+        it('Should set canFetchMore to true if nothing has been fetched yet', () => {
+          expect(ajax.canFetchMore).to.be.true;
+        });
+
+        it('does not add `page` to request headers when `fetchMore` is the first request', done => {
+          onRequest(request => {
+            expect(getRequestParam(request.url, 'page')).to.be.undefined;
+            done();
+          });
+          ajax.fetchMore();
+        });
+
+        it('adds `page` to request headers when `fetchMore` is called after `generateRequest`', async () => {
+          onRequest(() => ok(firstPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+
+          onRequest(request => {
+            expect(getRequestParam(request.url, 'page')).to.equal('2');
+            return jsonOk([]);
+          });
+          await ajax.fetchMore();
+          expect(ajax.lastResponse).to.deep.equal([]);
+        });
+
+        it('does not generate a request when calling fetchMore on the last page', async () => {
+          onRequest(() => ok(lastPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+
+          onRequest(() => done(new Error('Expected no request to be fired')));
+          await ajax.fetchMore();
+        });
+
+        it('Should set canFetchMore to false when the resource is not paginated', async () => {
+          onRequest(() => jsonOk([]));
+          await ajax.generateRequest();
+          expect(ajax.canFetchMore).to.be.false;
+        });
+
+        it('Should set canFetchMore to true as long as there are multiple pages', async () => {
+          onRequest(() => ok(firstPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+          expect(ajax.canFetchMore).to.be.true;
+
+          onRequest(() => ok(secondPageHeaders, [{number: '3'}, {number: '4'}]));
+          await ajax.fetchMore();
+          expect(ajax.canFetchMore).to.be.true;
+
+          onRequest(() => ok(lastPageHeaders, [{number: '5'}, {number: '6'}]));
+          await ajax.fetchMore();
+          expect(ajax.canFetchMore).to.be.false;
+        });
+
+        it('Should set canFetchMore to false when the last page is fetched', async () => {
+          onRequest(() => ok(lastPageHeaders, [{number: '5'}, {number: '6'}]));
+          await ajax.generateRequest();
+          expect(ajax.canFetchMore).to.be.false;
+        });
+
+        it('should reset pagination when the URL changes', async () => {
+          onRequest(() => ok(lastPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+          ajax.url = 'https://api.github.com/blah';
+          expect(ajax.canFetchMore).to.be.true;
+        });
+
+        it('should reset pagination when `method` changes', async () => {
+          onRequest(() => ok(lastPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+          ajax.method = 'POST';
+          expect(ajax.canFetchMore).to.be.true;
+        });
+
+        it('should reset pagination when `perPage` changes', async () => {
+          onRequest(() => ok(lastPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+          ajax.perPage = 23490234;
+          expect(ajax.canFetchMore).to.be.true;
+        });
+
+        it('should reset pagination when `params` changes', async () => {
+          onRequest(() => ok(lastPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+          ajax.set('params.parameter', 'value');
+          expect(ajax.canFetchMore).to.be.true;
+        });
+
+        it('should reset pagination when `contentType` changes', async () => {
+          onRequest(() => ok(lastPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+          ajax.contentType = 'text/plain';
+          expect(ajax.canFetchMore).to.be.true;
+        });
+
+        it('should reset pagination when `body` changes', async () => {
+          ajax.method = 'POST';
+          ajax.body = {key: 'value'};
+          onRequest(() => ok(lastPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+          ajax.body = {key: 'value2'};
+          expect(ajax.canFetchMore).to.be.true;
+        });
+
+        it('should reset pagination when `headers` changes', async () => {
+          onRequest(() => ok(lastPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+          ajax.set('headers.X-Espresso', 'Tripple-Please');
+          expect(ajax.canFetchMore).to.be.true;
+        });
+
+        it('should reset pagination when `handleAs` changes', async () => {
+          onRequest(() => ok(lastPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+          ajax.handleAs = 'beverage';
+          expect(ajax.canFetchMore).to.be.true;
+        });
+
+        it('Stores the first ever response in allResults', async () => {
+          onRequest(() => jsonOk([1,2,3]));
+          await ajax.generateRequest();
+          expect(ajax.allResults).to.deep.equal([1,2,3]);
+        });
+
+        it('Stores the all consequently fetched pages in allResults', async () => {
+          onRequest(() => ok(firstPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+
+          onRequest(() => ok(secondPageHeaders, [{number: '3'}, {number: '4'}]));
+          await ajax.fetchMore();
+
+          onRequest(() => ok(lastPageHeaders, [{number: '5'}, {number: '6'}]));
+          await ajax.fetchMore();
+          expect(ajax.allResults).to.deep.equal([{number: '1'}, {number: '2'}, {number: '3'}, {number: '4'}, {number: '5'}, {number: '6'}]);
+        });
+
+        it('Resets allResults when `generateRequest` is called', async () => {
+          onRequest(() => ok(firstPageHeaders, [{number: '1'}, {number: '2'}]));
+          await ajax.generateRequest();
+          expect(ajax.allResults).to.deep.equal([{number: '1'}, {number: '2'}]);
+
+          onRequest(() => ok(firstPageHeaders, [{number: '3'}, {number: '4'}]));
+          await ajax.generateRequest();
+          expect(ajax.allResults).to.deep.equal([{number: '3'}, {number: '4'}]);
+        });
+
+        it('Fetches the URL provided in the `Link` header when calling `fetchMore`', async () => {
+          onRequest(() => ok({ 'Link': '<https://api.github.com/beverage/espresso>; rel="next"' }, []));
+          await ajax.generateRequest();
+          onRequest(request => {
+            expect(request.url).to.equal('https://api.github.com/beverage/espresso')
+            return jsonOk([]);
+          });
+          await ajax.fetchMore();
         });
       });
     });
