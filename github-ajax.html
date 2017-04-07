@@ -323,7 +323,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
       get requestHeaders() {
         const headers = new Headers();
         var contentType = this.contentType;
-        if (contentType == null && (typeof this.body === 'string')) {
+        if (contentType === null && (typeof this.body === 'string')) {
           contentType = 'application/x-www-form-urlencoded';
         }
         if (contentType) {
@@ -443,10 +443,10 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
         const headers = this.requestHeaders
         const request = new Request(url, {
-            method: this.method,
-            headers: headers,
-            body: this._encodeBody(headers)
-          });
+          method: this.method,
+          headers: headers,
+          body: this._encodeBody(headers)
+        });
         
         return this._fetchOrTimeout(request)
           .then(this._checkResponseForErrors.bind(this))

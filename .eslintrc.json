@@ -2,11 +2,12 @@
   "parserOptions": {
     "ecmaVersion": 2017
   },
+  "fix": true,
   "extends": "eslint:recommended",
   "rules": {
+    "no-else-return": 0,
     "no-console": 0,
     "eqeqeq": 1,
-    "no-else-return": 1,
     "array-bracket-spacing": 1,
     "brace-style": [1, "1tbs", {
       "allowSingleLine": true
@@ -44,6 +45,7 @@
     "onGET": false,
     "onPOST": false,
     "jsonOk": false,
+    "ok": false,
     "wait": false,
     "respondWith": false,
     "serverError": false,

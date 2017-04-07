@@ -141,7 +141,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
           expect(ajax.queryString).to.be.equal('');
           expect(ajax.requestUrl).to.be.equal('');
 
-          ajax.params = {'a':'b', 'c':'d'};
+          ajax.params = {'a': 'b', 'c': 'd'};
 
           expect(ajax.queryString).to.be.equal('a=b&c=d');
           expect(ajax.requestUrl).to.be.equal('?a=b&c=d');
@@ -163,7 +163,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
           ajax = fixture('BlankUrl');
           expect(ajax.url).to.be.equal(undefined);
 
-          ajax.params = {'a':'b', 'c':'d'};
+          ajax.params = {'a': 'b', 'c': 'd'};
           onRequest(request => {
             expect(request.url).to.be.eql(window.location.href + '?a=b&c=d');
             return jsonOk({success: true});
@@ -204,7 +204,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         });
 
         it('encodes array params properly', () => {
-          ajax.params = {'a b': ['c','d e', 'f']};
+          ajax.params = {'a b': ['c', 'd e', 'f']};
           expect(ajax.queryString).to.be.equal('a%20b=c&a%20b=d%20e&a%20b=f');
         });
 
@@ -295,7 +295,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         });
 
         it('by default, the body is json encoded', async () => {
-          var requestObj = {foo: 'bar', baz: [1,2,3]}
+          var requestObj = {foo: 'bar', baz: [1, 2, 3]}
           ajax.body = requestObj;
           ajax.contentType = 'application/json';
 
@@ -310,7 +310,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         });
 
         it('if `contentType` is json, the body is json encoded', async () => {
-          var requestObj = {foo: 'bar', baz: [1,2,3]}
+          var requestObj = {foo: 'bar', baz: [1, 2, 3]}
           ajax.body = requestObj;
           ajax.contentType = 'application/json';
 
@@ -406,9 +406,9 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
       describe('when a request fails', () => {
         const expectedError = {
-            message: 'Bad Gateway',
-            errorCode: 502
-          }
+          message: 'Bad Gateway',
+          errorCode: 502
+        }
 
         beforeEach(() => {
           ajax = fixture('TrivialGet');
@@ -620,9 +620,9 @@ This code may only be used under the BSD style license found in LICENSE.txt
           // Last page
           '<https://api.github.com/x?page=1>; rel="first", <https://api.github.com/x?page=2>; rel="prev"'
         ]
-        const firstPageHeaders = { 'Link': pages[0] };
-        const secondPageHeaders = { 'Link': pages[1] };
-        const lastPageHeaders = { 'Link': pages[2] };
+        const firstPageHeaders = {'Link': pages[0]};
+        const secondPageHeaders = {'Link': pages[1]};
+        const lastPageHeaders = {'Link': pages[2]};
 
         beforeEach(() => {
           ajax = fixture('Pagination');
@@ -666,7 +666,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
           onRequest(() => ok(lastPageHeaders, [{number: '1'}, {number: '2'}]));
           await ajax.generateRequest();
 
-          onRequest(() => done(new Error('Expected no request to be fired')));
+          onRequest(() => { throw new Error('Expected no request to be fired') });
           await ajax.fetchMore();
         });
 
@@ -755,9 +755,9 @@ This code may only be used under the BSD style license found in LICENSE.txt
         });
 
         it('Stores the first ever response in allResults', async () => {
-          onRequest(() => jsonOk([1,2,3]));
+          onRequest(() => jsonOk([1, 2, 3]));
           await ajax.generateRequest();
-          expect(ajax.allResults).to.deep.equal([1,2,3]);
+          expect(ajax.allResults).to.deep.equal([1, 2, 3]);
         });
 
         it('Stores the all consequently fetched pages in allResults', async () => {
@@ -783,7 +783,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         });
 
         it('Fetches the URL provided in the `Link` header when calling `fetchMore`', async () => {
-          onRequest(() => ok({ 'Link': '<https://api.github.com/beverage/espresso>; rel="next"' }, []));
+          onRequest(() => ok({'Link': '<https://api.github.com/beverage/espresso>; rel="next"'}, []));
           await ajax.generateRequest();
           onRequest(request => {
             expect(request.url).to.equal('https://api.github.com/beverage/espresso')
