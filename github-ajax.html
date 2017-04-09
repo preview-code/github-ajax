@@ -302,6 +302,10 @@ This code may only be used under the BSD style license found in LICENSE.txt
        * @return {string}
        */
       get requestUrl() {
+        if (sharedToken && this.accessToken !== sharedToken) {
+          this.accessToken = sharedToken;
+        }
+
         const queryString = this.queryString;
         const url = this.url || '';
 
@@ -437,10 +441,6 @@ This code may only be used under the BSD style license found in LICENSE.txt
       },
 
       _generateRequest: function(url) {
-        if (sharedToken && this.accessToken !== sharedToken) {
-          this.accessToken = sharedToken;
-        }
-
         const headers = this.requestHeaders
         const request = new Request(url, {
           method: this.method,
