@@ -19,6 +19,39 @@ This code may only be used under the BSD style license found in LICENSE.txt
     Polymer({
       is: 'github-ajax',
       properties: {
+        
+        /**
+         * Reflects whether every page of results has been loaded.
+         * If false, call `fetchMore()` to load the next page of results.
+         *
+         * The accumulated results are stored in `allResults`. 
+         * `lastResponse` will only contain the data received from the last requested page.
+         *
+         * The amount of results loaded depends on the `perPage` property,
+         * as well as on whether GitHub decides to honor the value you set in `perPage`.
+         * @type {Boolean}
+         */
+        canFetchMore: {
+          type: Boolean,
+          readOnly: true,
+          notify: true,
+          value: true
+        },
+
+        /**
+         * Stores accumulated results from all fetched pages.
+         * If the endpoint you query only returns one result, this array wil contain simply that result.
+         * 
+         * Calling `generateRequest()` will reset this array.
+         * @type {Array}
+         */
+        allResults: {
+          type: Array,
+          readOnly: true,
+          notify: true,
+          value: () => []
+        },
+
         /**
          * How many results must be retrieved from GitHub, default 10.
          * @type {Number}
@@ -29,16 +62,8 @@ This code may only be used under the BSD style license found in LICENSE.txt
         },
 
         /**
-         * The nth page from GitHub, used to travers through pagination.
-         * @type {Number}
-         */
-        page: {
-          type: Number,
-          observer: '_onPageChange'
-        },
-
-        /**
          * OAuth access token for authenticated requests, e.g.: fetching the current user.
+         * This property will automatically be shared between all attached instances of `github-ajax`.
          * @type {String}
          */
         accessToken: {
@@ -61,76 +86,170 @@ This code may only be used under the BSD style license found in LICENSE.txt
         },
 
         /**
-         * Set this property to true to completely disable caching of GitHub responses.
-         * Mainly used for testing.
+         * The API path to query, e.g.: `/users` or `/repos/Polymer/polymer/pulls`
+         * @type {String}
          */
-        noCache: {
-          type: Boolean,
-          value: false
+        apiPath: {
+          type: String,
+          observer: '_resetPagination'
         },
 
-        url: String,
-
+        /**
+         * URL query parameters to send with the request.
+         * Parameter keys are represented by the object field names,
+         * param values are the values for object fields.
+         * @type{Object}
+         */
         params: {
           type: Object,
           value: function() { return {} }
         },
 
+        /**
+         * The request method to use. Defaults to `GET`.
+         * @type {String}
+         */
         method: {
           type: String,
-          value: 'GET'
+          value: 'GET',
+          observer: '_resetPagination'
         },
 
+        /**
+         * Request headers to send with the request.
+         * Header keys are represented by the object field names,
+         * header values are the values for object fields.
+         * Note: setting a `Content-Type` header here will override the value
+         * specified by the `contentType` property of this element.
+         * @type {Object}
+         */
         headers: {
           type: Object,
           value: function() { return {} }
         },
 
+        /**
+         * Content type to use when sending data. If the `contentType` property
+         * is set and a `Content-Type` header is specified in the `headers`
+         * property, the `headers` property value will take precedence.
+         *
+         * Varies the handling of the `body` param.
+         * @type {String}
+         */
         contentType: {
           type: String,
-          value: null
+          value: null,
+          observer: '_resetPagination'
         },
 
+         /**
+         * Body content to send with the request, typically used with "POST"
+         * requests.
+         *
+         * If body is a string it will be sent unmodified. 
+         * If the body is a string and contentType is not set,
+         * then the `content-type` will default to `application/x-www-form-urlencoded"`
+         *
+         * If Content-Type is set to a value listed below, then
+         * the body will be encoded accordingly.
+         *
+         *    * `content-type="application/json"`
+         *      * body is encoded like `{"foo":"bar baz","x":1}`
+         *    * `content-type="application/x-www-form-urlencoded"`
+         *      * body is encoded like `foo=bar+baz&x=1`
+         *
+         * Otherwise the body will be passed to the browser unmodified, and it
+         * will handle any encoding (e.g. for FormData, Blob, ArrayBuffer).
+         *
+         * @type (ArrayBuffer|ArrayBufferView|Blob|Document|FormData|null|string|undefined|Object)
+         */
         body: {
           type: Object,
-          value: null
+          value: null,
+          observer: '_resetPagination'
         },
 
+        /**
+         * Specifies what data to store in the response, and
+         * to deliver in `response` events.
+         *
+         * One of:
+         *
+         *    `text`: uses `response.text()`.
+         *
+         *    `json`: uses `response.json()`.
+         *
+         *    `arraybuffer`: uses `response.arrayBuffer()`.
+         * 
+         * Any other value will result in an error on response.
+         */
         handleAs: {
           type: String,
-          value: 'json'
+          value: 'json',
+          observer: '_resetPagination'
         },
 
+        /**
+         * The most recent request made by this iron-ajax element.
+         * @type {Request}
+         */
         lastRequest: {
           type: Object,
           notify: true,
           readOnly: true
         },
 
+        /**
+         * True while lastRequest is in flight.
+         */
         loading: {
           type: Boolean,
           notify: true,
           readOnly: true,
         },
 
+        /**
+         * The most recent request made by this iron-ajax element.
+         * Note that lastResponse and lastError are set when lastRequest finishes,
+         * so if loading is true, then lastResponse and lastError will correspond
+         * to the result of the previous request.
+         *
+         * The type of the response is determined by the value of `handleAs` at
+         * the time that the request was generated.
+         */
         lastResponse: {
           type: Object,
           notify: true,
           readOnly: true
         },
 
+        /**
+         * lastRequest's error, if any.
+         *
+         * @type {Object}
+         */
         lastError: {
           type: Object,
           notify: true,
           readOnly: true
         },
-        
-        _cacheName: {
+
+        /**
+         * Used in tests
+         */
+        _githubUrl: {
           type: String,
-          value: 'github-cache-v1'
+          value: 'https://api.github.com'
+        },
+
+        _nextPageLink: {
+          type: String
         }
       },
       
+      observers: [
+        '_resetPagination(params.*, headers.*)'
+      ],
 
       attached: function() {
         if (sharedToken) this.accessToken = sharedToken;
@@ -143,10 +262,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
       _onPerPageChange: function(itemCount) {
         if (this.params) this.params['per_page'] = itemCount;
-      },
-
-      _onPageChange: function(newPage) {
-        if (this.params) this.params['page'] = newPage
+        this._resetPagination();
       },
 
       _onTokenChange: function(newToken) {
@@ -194,8 +310,13 @@ This code may only be used under the BSD style license found in LICENSE.txt
        * @return {string}
        */
       get requestUrl() {
+        if (sharedToken && this.accessToken !== sharedToken) {
+          this.accessToken = sharedToken;
+        }
+
         const queryString = this.queryString;
-        const url = this.url || '';
+        const apiPath = this.apiPath || '/';
+        const url = this._githubUrl + (apiPath.startsWith('/') ? apiPath : '/' + apiPath);
 
         if (queryString) {
           const bindingChar = url.indexOf('?') >= 0 ? '&' : '?';
@@ -215,11 +336,11 @@ This code may only be used under the BSD style license found in LICENSE.txt
       get requestHeaders() {
         const headers = new Headers();
         var contentType = this.contentType;
-        if (contentType == null && (typeof this.body === 'string')) {
+        if (contentType === null && (typeof this.body === 'string')) {
           contentType = 'application/x-www-form-urlencoded';
         }
         if (contentType) {
-          headers.append('content-type', contentType);
+          headers.set('content-type', contentType);
         }
 
         var acceptType = {
@@ -233,11 +354,11 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
         if (this.headers instanceof Object) {
           for (header in this.headers) {
-            headers.append(header, this.headers[header].toString());
+            headers.set(header, this.headers[header].toString());
           }
 
-          if (acceptType && !headers.has('accept')) {
-            headers.append('accept', acceptType);
+          if (acceptType && !headers.has('Accept')) {
+            headers.set('Accept', acceptType);
           }
         }
         return headers;
@@ -290,26 +411,60 @@ This code may only be used under the BSD style license found in LICENSE.txt
         }
       },
 
+      /**
+       * Performs an AJAX request to the specified URL.
+       * This will reset the results stored in `allResults`.
+       * If the queried endpoint supports pagination, the first page will be loaded.
+       * 
+       * Returns a Promise that resolves when the request completes and after any events have been fired.
+       * @return {Promise}
+       */
       generateRequest: function() {
-        if (sharedToken && this.accessToken !== sharedToken) {
-          this.accessToken = sharedToken;
-        }
+        this._setAllResults([]);
+        return this._generateRequest(this.requestUrl);
+      },
 
-        const headers = this.requestHeaders;
-        const request = new Request(this.requestUrl, {
-            method: this.method,
-            headers: headers,
-            body: this._encodeBody(headers)
-          });
+      /**
+       * If `canFetchMore` returns true, this method will
+       * request the next page of results.
+       * These results will be concatenated to `allResults`.
+       * 
+       * Returns a Promise that resolves when the request completes and after any events have been fired.
+       * Just like `generateRequest`, this method will fire `github-response` & co events.
+       * @return {Promise}
+       */
+      fetchMore: function() {
+        if (this.canFetchMore) {
+          if (this._nextPageLink) {
+            return this._generateRequest(this._nextPageLink);
+          } else {
+            return this.generateRequest();
+          }
+        }
+      },
+
+      _appendResults: function(responseBody) {
+        if (!responseBody) return;
+        this._setAllResults(this.allResults.concat(responseBody));
+        this._onResponse(responseBody);
+      },
+
+      _generateRequest: function(url) {
+        const headers = this.requestHeaders
+        const request = new Request(url, {
+          method: this.method,
+          headers: headers,
+          body: this._encodeBody(headers)
+        });
         
         return this._fetchOrTimeout(request)
           .then(this._checkResponseForErrors.bind(this))
           .then(this._decodeResponseBody.bind(this))
+          .then(this._appendResults.bind(this))
           .then(this._onResponse.bind(this))
           .catch(this._onError.bind(this));
       },
 
-      
       _fetchOrTimeout: function(request) {
         this._setLastRequest(request);
         this._setLoading(true);
@@ -346,14 +501,48 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
       _decodeResponseBody: function(response) {
         if (!response) return;
+
+        var body;
         if (this.handleAs === 'json') {
-          return response.json();
+          body = response.json();
         } else if (this.handleAs === 'text') {
-          return response.text();
+          body = response.text();
         } else if (this.handleAs === 'arrayBuffer') {
-          return response.arrayBuffer();
+          body = response.arrayBuffer();
+        } else {
+          throw new Error('Unrecognized `handleAs` property: ' + this.handleAs);
         }
-        throw new Error('Unrecognized `handleAs` property: ' + this.handleAs);
+
+        this._updatePagination(response.headers.get('Link'));
+
+        return body;
+      },
+
+      _resetPagination: function() {
+        this._setCanFetchMore(true);
+        this._nextPageLink = undefined;
+      },
+
+      _updatePagination: function(linkHeader) {
+        const pageLinks = this._parseLinkHeader(linkHeader);
+        if (pageLinks.next) {
+          this._setCanFetchMore(true);
+          this._nextPageLink = pageLinks.next;
+        } else {
+          this._setCanFetchMore(false);
+          this._nextPageLink = undefined;
+        }
+      },
+
+      _parseLinkHeader: function(linkHeader) {
+        const pageLinks = {}
+        if (linkHeader) {
+          linkHeader.split(',').forEach(link => {
+            const linkMatches = link.match(/<(.+)>; rel="(next|prev|first|last)"/);
+            if (linkMatches && linkMatches.length >= 3) pageLinks[linkMatches[2]] = linkMatches[1];
+          });
+        }
+        return pageLinks;
       },
 
       _onResponse: function(responseBody) {

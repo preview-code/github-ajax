@@ -1,9 +1,13 @@
 {
+  "parserOptions": {
+    "ecmaVersion": 2017
+  },
+  "fix": true,
   "extends": "eslint:recommended",
   "rules": {
+    "no-else-return": 0,
     "no-console": 0,
     "eqeqeq": 1,
-    "no-else-return": 1,
     "array-bracket-spacing": 1,
     "brace-style": [1, "1tbs", {
       "allowSingleLine": true
@@ -26,6 +30,7 @@
     "html"
   ],
   "globals": {
+    "Promise": false,
     "Polymer": false,
     "sinon": false,
     "assert": false,
@@ -33,6 +38,18 @@
     "fixture": false,
     "describe": false,
     "WCT": false,
-    "beforeEach": false
+    "beforeEach": false,
+    "afterEach": false,
+    "expect": false,
+    "onRequest": false,
+    "onGET": false,
+    "onPOST": false,
+    "jsonOk": false,
+    "ok": false,
+    "wait": false,
+    "respondWith": false,
+    "serverError": false,
+    "getRequestParam": false,
+    "ArrayBuffer": false
   }
 }

@@ -18,6 +18,8 @@ const respondWith = async (code, headers, body) => () => new Response(JSON.strin
   headers: headers
 });
 
+const ok = async (headers, body) => await respondWith(200, headers, body);
+
 const echoJson = async request => (await jsonOk(request.url))();
 
 const onRequest = fn => {
