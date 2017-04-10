@@ -18,52 +18,38 @@ This code may only be used under the BSD style license found in LICENSE.txt
 <body>
   <test-fixture id="TrivialGet">
     <template>
-      <github-ajax url="https://api.github.com" no-cache></github-ajax>
+      <github-ajax></github-ajax>
     </template>
   </test-fixture>
   
   <test-fixture id="TrivialPost">
     <template>
-      <github-ajax method="POST"
-                   url="https://api.github.com" no-cache></github-ajax>
-    </template>
-  </test-fixture>
-  
-  <test-fixture id='BlankUrl'>
-    <template>
-      <github-ajax no-cache></github-ajax>
+      <github-ajax method="POST"></github-ajax>
     </template>
   </test-fixture>
 
   <test-fixture id="Timeout">
     <template>
-      <github-ajax url="https://api.github.com"
-                 timeout="1" no-cache></iron-ajax>
-    </template>
-  </test-fixture>
-
-  <test-fixture id="RealPost">
-    <template>
-      <github-ajax method="POST" url="/httpbin/post" no-cache></github-ajax>
+      <github-ajax timeout="1"></iron-ajax>
     </template>
   </test-fixture>
 
   <test-fixture id="MultipleElements">
     <template>
-      <github-ajax id="ajax" url="https://api.github.com" no-cache></github-ajax>
-      <github-ajax id="anotherAjax" url="github" no-cache></github-ajax>
+      <github-ajax id="ajax"></github-ajax>
+      <github-ajax id="anotherAjax"></github-ajax>
     </template>
   </test-fixture>
 
   <test-fixture id="Cache">
     <template>
-      <github-ajax id="ajax" url="https://api.github.com"></github-ajax>
+      <github-ajax id="ajax"></github-ajax>
     </template>
   </test-fixture>
 
   <test-fixture id="Pagination">
     <template>
-      <github-ajax id="ajax" no-cache url="https://api.github.com"></github-ajax>
+      <github-ajax id="ajax"></github-ajax>
     </template>
   </test-fixture>
 
@@ -133,35 +119,23 @@ This code may only be used under the BSD style license found in LICENSE.txt
         });
       });
 
-      describe('when url isn\'t set yet', () => {
+      describe('when apiPath isn\'t set yet', () => {
 
-        it('requestUrl remains empty despite valid queryString', () => {
-          ajax = fixture('BlankUrl');
-          expect(ajax.url).to.be.equal(undefined);
+        it('requestUrl always starts with empty github API host', () => {
+          ajax = fixture('TrivialGet');
+          expect(ajax.apiPath).to.be.equal(undefined);
           expect(ajax.queryString).to.be.equal('');
-          expect(ajax.requestUrl).to.be.equal('');
+          expect(ajax.requestUrl).to.be.equal('https://api.github.com/');
 
           ajax.params = {'a': 'b', 'c': 'd'};
 
           expect(ajax.queryString).to.be.equal('a=b&c=d');
-          expect(ajax.requestUrl).to.be.equal('?a=b&c=d');
+          expect(ajax.requestUrl).to.be.equal('https://api.github.com/?a=b&c=d');
         });
 
-        it('generateRequest defaults to window.location.href if url is left empty', async () => {
-          ajax = fixture('BlankUrl');
-          expect(ajax.url).to.be.equal(undefined);
-
-          onRequest(request => {
-            expect(request.url).to.equal(window.location.href);
-            return jsonOk({success: true});
-          });
-
-          await ajax.generateRequest();
-        });
-
-        it('still adds query params if url is left empty', async () => {
-          ajax = fixture('BlankUrl');
-          expect(ajax.url).to.be.equal(undefined);
+        it('still adds query params if apiPath is left empty', async () => {
+          ajax = fixture('TrivialGet');
+          expect(ajax.apiPath).to.be.equal(undefined);
 
           ajax.params = {'a': 'b', 'c': 'd'};
           onRequest(request => {
@@ -193,9 +167,9 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
       describe('when generating a request', () => {
         it('correctly adds params to a URL that already has some', () => {
-          ajax.url += '?a=b';
+          ajax.apiPath = '?a=b';
           ajax.params = {'c': 'd'};
-          expect(ajax.requestUrl).to.be.equal('https://api.github.com?a=b&c=d')
+          expect(ajax.requestUrl).to.be.equal('https://api.github.com/?a=b&c=d')
         })
 
         it('encodes params properly', () => {
@@ -441,7 +415,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         });
 
         it('fires `github-error` on network errors', done => {
-          ajax.url = 'https://nonexistant.example.com/';
+          ajax._githubUrl = 'https://nonexistant.example.com/';
           window.fetch.restore();
 
           ajax.addEventListener('github-error', function(event) {
@@ -452,7 +426,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         })
 
         it('reflects network errors to all relevant properties', async () => {
-          ajax.url = 'https://nonexistant.example.com/';
+          ajax._githubUrl = 'https://nonexistant.example.com/';
           window.fetch.restore();
 
           await ajax.generateRequest();
@@ -465,7 +439,8 @@ This code may only be used under the BSD style license found in LICENSE.txt
       describe('when making a POST over the wire', () => {
         beforeEach(() => {
           window.fetch.restore();
-          ajax = fixture('RealPost');
+          ajax = fixture('TrivialPost');
+          ajax._githubUrl = '/httpbin/post';
         })
 
         // This fails on firefox 52 for some reason.
@@ -699,7 +674,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         it('should reset pagination when the URL changes', async () => {
           onRequest(() => ok(lastPageHeaders, [{number: '1'}, {number: '2'}]));
           await ajax.generateRequest();
-          ajax.url = 'https://api.github.com/blah';
+          ajax.apiPath = '/blah';
           expect(ajax.canFetchMore).to.be.true;
         });
 
