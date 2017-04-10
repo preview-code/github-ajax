@@ -86,10 +86,10 @@ This code may only be used under the BSD style license found in LICENSE.txt
         },
 
         /**
-         * The url to query, e.g.: https://api.github.com/users
+         * The API path to query, e.g.: `/users` or `/repos/Polymer/polymer/pulls`
          * @type {String}
          */
-        url: {
+        apiPath: {
           type: String,
           observer: '_resetPagination'
         },
@@ -234,6 +234,14 @@ This code may only be used under the BSD style license found in LICENSE.txt
           readOnly: true
         },
 
+        /**
+         * Used in tests
+         */
+        _githubUrl: {
+          type: String,
+          value: 'https://api.github.com'
+        },
+
         _nextPageLink: {
           type: String
         }
@@ -307,7 +315,8 @@ This code may only be used under the BSD style license found in LICENSE.txt
         }
 
         const queryString = this.queryString;
-        const url = this.url || '';
+        const apiPath = this.apiPath || '/';
+        const url = this._githubUrl + (apiPath.startsWith('/') ? apiPath : '/' + apiPath);
 
         if (queryString) {
           const bindingChar = url.indexOf('?') >= 0 ? '&' : '?';
