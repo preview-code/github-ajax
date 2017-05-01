@@ -8,8 +8,8 @@ This code may only be used under the BSD style license found in LICENSE.txt
 <head>
   <title>github-ajax tests</title>
 
-  <script src="../../webcomponentsjs/webcomponents-lite.js"></script>
   <script src="../../web-component-tester/browser.js"></script>
+  <script src="../../webcomponentsjs/webcomponents-lite.js"></script>
   <script src="fetch-test-helpers.js"></script>
 
   <link rel="import" href="../../polymer/polymer.html">
@@ -165,7 +165,8 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
           ajax.params = {'a': 'b', 'c': 'd'};
           onRequest(request => {
-            expect(request.url).to.be.eql(window.location.href + '?a=b&c=d');
+            const location = window.location.href.split('?')[0];
+            expect(request.url).to.be.eql(location + '?a=b&c=d');
             return jsonOk({success: true});
           });
 
@@ -425,19 +426,21 @@ This code may only be used under the BSD style license found in LICENSE.txt
           });
 
           onRequest(() => serverError(expectedError.errorCode, expectedError.message));
-          ajax.generateRequest();
+          ajax.generateRequest().catch(() => {});
         });
 
         it('reflects HTTP errors to all relevant properties', async () => {
 
           onRequest(() => serverError(expectedError.errorCode, expectedError.message));
-          await ajax.generateRequest();
-
-          expect(ajax.loading).to.be.false;
-          expect(ajax.lastError).to.not.be.null;
-          expect(ajax.lastError.message).to.equal(expectedError.message);
-          expect(ajax.lastError.errorCode).to.equal(expectedError.errorCode);
-          expect(ajax.lastError.response).to.be.ok;
+          try {
+            await ajax.generateRequest();
+          } catch (e) {} finally {
+            expect(ajax.loading).to.be.false;
+            expect(ajax.lastError).to.not.be.null;
+            expect(ajax.lastError.message).to.equal(expectedError.message);
+            expect(ajax.lastError.errorCode).to.equal(expectedError.errorCode);
+            expect(ajax.lastError.response).to.be.ok;
+          }
         });
 
         it('fires `github-error` on network errors', done => {
@@ -448,17 +451,31 @@ This code may only be used under the BSD style license found in LICENSE.txt
             expect(event.detail).to.be.instanceof(TypeError);
             done();
           });
-          ajax.generateRequest();
+          ajax.generateRequest().catch(() => {});
         })
 
         it('reflects network errors to all relevant properties', async () => {
           ajax.url = 'https://nonexistant.example.com/';
           window.fetch.restore();
 
-          await ajax.generateRequest();
-          expect(ajax.lastResponse).to.be.null;
-          expect(ajax.lastError).to.not.be.null;
-          expect(ajax.lastError).to.be.instanceof(TypeError);
+          try {
+            await ajax.generateRequest();
+          } catch (e) {} finally {
+            expect(ajax.lastResponse).to.be.null;
+            expect(ajax.lastError).to.not.be.null;
+            expect(ajax.lastError).to.be.instanceof(TypeError);
+          }
+        });
+
+        it('Rejects the request promise on network errors', (done) => {
+          ajax.url = 'https://nonexistant.example.com/';
+          window.fetch.restore();
+          ajax.generateRequest().catch(() => done());
+        });
+
+        it('Rejects the request promise on HTTP errors', (done) => {
+          onRequest(() => serverError(expectedError.errorCode, expectedError.message));
+          ajax.generateRequest().catch(() => done());
         });
       });
 
@@ -523,28 +540,34 @@ This code may only be used under the BSD style license found in LICENSE.txt
             done();
           });
 
-          ajax.generateRequest();
+          ajax.generateRequest().catch(() => {});
         });
 
         it('it fails once that timeout is reached', async () => {
-          await ajax.generateRequest();
-          expect(ajax.loading).to.be.false;
-          expect(ajax.lastResponse).to.be.null;
-          expect(ajax.lastError).to.deep.equal({
-            timeout: true,
-            message: 'The request timed out'
-          });
+          try {
+            await ajax.generateRequest();
+          } catch (e) {} finally {
+            expect(ajax.loading).to.be.false;
+            expect(ajax.lastResponse).to.be.null;
+            expect(ajax.lastError).to.deep.equal({
+              timeout: true,
+              message: 'The request timed out'
+            });
+          }
         });
 
         it('ignores a response after the corresponding request timed out', async () => {
-          await ajax.generateRequest();
-          respond(jsonOk({}));
-          expect(ajax.loading).to.be.false;
-          expect(ajax.lastResponse).to.be.null;
-          expect(ajax.lastError).to.deep.equal({
-            timeout: true,
-            message: 'The request timed out'
-          });
+          try {
+            await ajax.generateRequest();
+          } catch (e) {} finally {
+            respond(jsonOk({}));
+            expect(ajax.loading).to.be.false;
+            expect(ajax.lastResponse).to.be.null;
+            expect(ajax.lastError).to.deep.equal({
+              timeout: true,
+              message: 'The request timed out'
+            });
+          }
         });
       });
 
