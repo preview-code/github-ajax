@@ -453,7 +453,10 @@ This code may only be used under the BSD style license found in LICENSE.txt
           .then(this._decodeResponseBody.bind(this))
           .then(this._appendResults.bind(this))
           .then(this._onResponse.bind(this))
-          .catch(this._onError.bind(this));
+          .catch(error => {
+            this._onError(error);
+            throw error;
+          });
       },
 
       _fetchOrTimeout: function(request) {
