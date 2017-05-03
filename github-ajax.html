@@ -19,12 +19,12 @@ This code may only be used under the BSD style license found in LICENSE.txt
     Polymer({
       is: 'github-ajax',
       properties: {
-        
+
         /**
          * Reflects whether every page of results has been loaded.
          * If false, call `fetchMore()` to load the next page of results.
          *
-         * The accumulated results are stored in `allResults`. 
+         * The accumulated results are stored in `allResults`.
          * `lastResponse` will only contain the data received from the last requested page.
          *
          * The amount of results loaded depends on the `perPage` property,
@@ -41,7 +41,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         /**
          * Stores accumulated results from all fetched pages.
          * If the endpoint you query only returns one result, this array wil contain simply that result.
-         * 
+         *
          * Calling `generateRequest()` will reset this array.
          * @type {Array}
          */
@@ -74,10 +74,10 @@ This code may only be used under the BSD style license found in LICENSE.txt
         /**
          * Amount of milliseconds before the request is considered to be timed out.
          * A timeout triggers the `github-error` event and sets the appropriate lastError and lastRequest property.
-         * 
+         *
          * Note that the timeout property cannot cancel the actual in-flight request,
          * since the Fetch API does not yet have support for interrupting requests.
-         * 
+         *
          * @type {Number}
          */
         timeout: {
@@ -146,7 +146,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
          * Body content to send with the request, typically used with "POST"
          * requests.
          *
-         * If body is a string it will be sent unmodified. 
+         * If body is a string it will be sent unmodified.
          * If the body is a string and contentType is not set,
          * then the `content-type` will default to `application/x-www-form-urlencoded"`
          *
@@ -180,7 +180,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
          *    `json`: uses `response.json()`.
          *
          *    `arraybuffer`: uses `response.arrayBuffer()`.
-         * 
+         *
          * Any other value will result in an error on response.
          */
         handleAs: {
@@ -238,7 +238,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
           type: String
         }
       },
-      
+
       observers: [
         '_resetPagination(params.*, headers.*)'
       ],
@@ -406,7 +406,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
        * Performs an AJAX request to the specified URL.
        * This will reset the results stored in `allResults`.
        * If the queried endpoint supports pagination, the first page will be loaded.
-       * 
+       *
        * Returns a Promise that resolves when the request completes and after any events have been fired.
        * @return {Promise}
        */
@@ -419,7 +419,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
        * If `canFetchMore` returns true, this method will
        * request the next page of results.
        * These results will be concatenated to `allResults`.
-       * 
+       *
        * Returns a Promise that resolves when the request completes and after any events have been fired.
        * Just like `generateRequest`, this method will fire `github-response` & co events.
        * @return {Promise}
@@ -447,7 +447,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
           headers: headers,
           body: this._encodeBody(headers)
         });
-        
+
         return this._fetchOrTimeout(request)
           .then(this._checkResponseForErrors.bind(this))
           .then(this._decodeResponseBody.bind(this))
@@ -463,7 +463,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         this._setLastRequest(request);
         this._setLoading(true);
         this.fire('github-request', request);
-        
+
         return Promise.race([this._timeout(), fetch(request).then(response => ({
           request: request,
           response: response
@@ -481,7 +481,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
       _checkResponseForErrors: function(o) {
         if (this.lastRequest === o.request) {
-          if (o.response.status === 200) {
+          if (o.response.ok) {
             return Promise.resolve(o.response);
           } else {
             return Promise.reject({
