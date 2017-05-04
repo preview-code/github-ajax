@@ -21,14 +21,14 @@ This code may only be used under the BSD style license found in LICENSE.txt
       <github-ajax url="https://api.github.com" no-cache></github-ajax>
     </template>
   </test-fixture>
-  
+
   <test-fixture id="TrivialPost">
     <template>
       <github-ajax method="POST"
                    url="https://api.github.com" no-cache></github-ajax>
     </template>
   </test-fixture>
-  
+
   <test-fixture id='BlankUrl'>
     <template>
       <github-ajax no-cache></github-ajax>
@@ -90,7 +90,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
           setTimeout(done, 100);
         });
       });
-      
+
       describe('when making simple GET requests for JSON', () => {
         it('has sane defaults that love you', async () => {
           onRequest(async request => {
@@ -187,7 +187,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
             expect(request.method).to.be.equal('POST');
             return jsonOk({success: true});
           });
-          
+
           ajax.generateRequest();
         });
       });
@@ -222,7 +222,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
       describe('when params are changed', () => {
         it('generates a request that reflects the change', async () => {
           ajax.params = {a: 'a'};
-          
+
           onRequest(request => {
             expect(request.url).to.be.equal('https://api.github.com/?a=a');
             return jsonOk({success: true});
@@ -331,14 +331,14 @@ This code may only be used under the BSD style license found in LICENSE.txt
             var requestObj = new Foo('baz');
             ajax.body = requestObj;
             ajax.contentType = 'application/x-www-form-urlencoded';
-            
+
             onPOST(async request => {
               expect(request).to.be.ok;
               const body = await request.text();
               expect(body).to.equal('bar=baz');
               return jsonOk({success: true});
             });
-            
+
             await ajax.generateRequest();
           });
         });
@@ -347,7 +347,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
           it('we don\'t try to encode an ArrayBuffer', async () => {
             var requestObj = new ArrayBuffer()
             ajax.body = requestObj;
-            
+
             onPOST(async request => {
               expect(request).to.be.ok;
               // We give the browser the ArrayBuffer directly, without trying
@@ -357,7 +357,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
               expect(body).to.deep.equal(requestObj);
               return jsonOk({success: true});
             });
-            
+
             await ajax.generateRequest();
           });
         })
@@ -404,6 +404,18 @@ This code may only be used under the BSD style license found in LICENSE.txt
           expect(typeof(ajax.lastResponse)).to.be.equal('string');
         });
       });
+
+      describe('ok request', () => {
+
+        it.only('Accepts the request promise on HTTP ok', async () => {
+          ajax._onError = e => { throw e }
+
+          onRequest(() => respondWith(203, new Headers(), 'OK'));
+
+          await ajax.generateRequest();
+          expect(ajax.lastResponse).to.deep.equal('OK');
+        });
+      })
 
       describe('when a request fails', () => {
         const expectedError = {
@@ -486,7 +498,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         })
 
         // This fails on firefox 52 for some reason.
-        // Issue is described at: 
+        // Issue is described at:
         //    https://github.com/webcomponents/webcomponentsjs/issues/752
         it.skip('FormData is handled correctly', async () => {
           const requestBody = new FormData();
@@ -495,9 +507,9 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
           ajax.body = requestBody;
           await ajax.generateRequest();
-          
+
           // httpbin echoes the request back as response body
-          const sentRequest = ajax.lastResponse; 
+          const sentRequest = ajax.lastResponse;
           expect(sentRequest.headers['Content-Type']).to.match(
               /^multipart\/form-data; boundary=.*$/);
 
@@ -533,7 +545,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
           ajax = fixture('Timeout');
           respond = onRequest(wait);
         });
-        
+
         it('fires `github-error` on timeout', done => {
           ajax.addEventListener('github-error', e => {
             expect(e.detail.timeout).to.be.true;
@@ -573,7 +585,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
 
       describe('GitHub specific properties', () => {
         var anotherAjax;
-        
+
         beforeEach(() => {
           ajax = fixture('MultipleElements')[0];
           anotherAjax = fixture('MultipleElements')[1];
@@ -594,7 +606,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
             expect(getRequestParam(request.url, 'access_token')).to.equal(token);
             return jsonOk({hello: 'world'})
           });
-          
+
           ajax.accessToken = token;
           await ajax.generateRequest();
         });
@@ -612,7 +624,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
             expect(getRequestParam(request.url, 'per_page')).to.equal('42');
             return jsonOk({hello: 'world'})
           });
-          
+
           ajax.perPage = 42;
           await ajax.generateRequest();
         });
@@ -620,7 +632,7 @@ This code may only be used under the BSD style license found in LICENSE.txt
         it('access token is shared between instances', done => {
           ajax.accessToken = token;
           expect(ajax.params.access_token).to.equal(token);
-          
+
           expect(anotherAjax.accessToken).to.equal(token);
           expect(anotherAjax.params.access_token).to.equal(token);
 
